@@ -690,6 +690,136 @@ def sync_matches(base_url):
     return matches
 
 
+DIVISION_ID_MAP = {
+    1: "Open", 2: "Standard", 3: "Production", 4: "Revolver",
+    5: "Classic", 22: "Production Optics", 39: "Optics"
+}
+
+
+def scrape_results_match(match_id, base_url):
+    """
+    爬取已完成比賽的 Results 頁面，提取 Overall 排名數據。
+
+    流程:
+      1. Fetch match page → 檢測有邊幾個 Division（有 Results links）
+      2. 逐個 Division fetch Overall results table
+      3. 解析: Place, #, Shooter, Category, Class, Factor, Region, Total Score
+      4. 寫入 shooters 表（總分直接來自官方排名）
+
+    Division ID map: {1:Open, 2:Standard, 3:Production, 4:Revolver,
+                      5:Classic, 22:Production Optics, 39:Optics}
+    """
+    import requests as _req
+    session = _req.Session()
+    session.headers.update({
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    })
+
+    print(f"[RESULTS] 開始爬取比賽 #{match_id} 的 Results 數據...")
+
+    # 1. 檢測可用 Divisions
+    match_url = f"{base_url}?match={match_id}"
+    try:
+        resp = session.get(match_url, timeout=15)
+        resp.raise_for_status()
+    except Exception as e:
+        print(f"[RESULTS] 無法 fetch match page: {e}")
+        return 0, 0
+
+    soup = BeautifulSoup(resp.text, "html.parser")
+    available_divs = set()
+    for a in soup.select("a[href*='results/']"):
+        m = re.search(r"division=(\d+)", a.get("href", ""))
+        if m:
+            available_divs.add(int(m.group(1)))
+
+    if not available_divs:
+        # Fallback: try all known divisions
+        available_divs = set(DIVISION_ID_MAP.keys())
+
+    print(f"[RESULTS] 可用 Divisions: {[DIVISION_ID_MAP.get(d, d) for d in sorted(available_divs)]}")
+
+    # 2. 逐個 Division 爬取 Overall results
+    conn = get_db()
+    cursor = conn.cursor()
+    total_shooters = 0
+
+    try:
+        for div_id in sorted(available_divs):
+            div_name = DIVISION_ID_MAP.get(div_id, f"Div{div_id}")
+            url = f"{base_url}/results/{match_id}?division={div_id}&group=overall"
+            try:
+                resp = session.get(url, timeout=15)
+                resp.raise_for_status()
+            except Exception as e:
+                print(f"  [{div_name}] HTTP error: {e}")
+                continue
+
+            soup = BeautifulSoup(resp.text, "html.parser")
+            table = soup.find("table", class_="table")
+            if not table:
+                print(f"  [{div_name}] 冇 result table")
+                continue
+
+            rows = table.find("tbody")
+            if not rows:
+                print(f"  [{div_name}] 冇 tbody")
+                continue
+
+            div_shooters = 0
+            for tr in rows.find_all("tr"):
+                cells = tr.find_all("td")
+                if len(cells) < 9:
+                    continue
+
+                try:
+                    place = int(cells[0].get_text(strip=True) or 0)
+                    comp_num = int(cells[1].get_text(strip=True) or 0)
+                    name = cells[2].get_text(strip=True)
+                    category = cells[3].get_text(strip=True)
+                    cls = cells[4].get_text(strip=True)
+                    factor = cells[5].get_text(strip=True)
+                    region = cells[6].get_text(strip=True) if len(cells) > 6 else "HKG"
+                    total_score = float(cells[7].get_text(strip=True) or 0) if len(cells) > 7 else 0
+
+                    # 清洗 name
+                    name = sanitize_name(name)
+                    if name == "[Unknown]":
+                        continue
+                except (ValueError, IndexError) as e:
+                    continue
+
+                # 寫入 shooters
+                cursor.execute("""
+                    INSERT OR IGNORE INTO shooters
+                    (match_id, competitor_number, name, division, class, factor, category, region, total_score)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (match_id, comp_num, name, div_name, cls, factor, category, region, total_score))
+
+                cursor.execute("""
+                    UPDATE shooters SET name=?, division=?, class=?, factor=?, category=?,
+                                        region=?, total_score=?, updated_at=datetime('now')
+                    WHERE match_id=? AND competitor_number=?
+                """, (name, div_name, cls, factor, category, region, total_score,
+                      match_id, comp_num))
+
+                div_shooters += 1
+
+            total_shooters += div_shooters
+            print(f"  [{div_name}] {div_shooters} shooters")
+
+        conn.commit()
+
+    except Exception as e:
+        print(f"[RESULTS] 錯誤: {e}")
+        import traceback; traceback.print_exc()
+    finally:
+        conn.close()
+
+    print(f"[RESULTS] 比賽 #{match_id}: 共 {total_shooters} 射手")
+    return total_shooters
+
+
 def main_sync():
     """主入口（同步版本）"""
     cfg = load_config()

@@ -25,7 +25,7 @@ from contextlib import contextmanager
 
 sys.path.insert(0, os.path.dirname(__file__))
 from core.database import get_db, init_db
-from core.scraper import load_config, scrape_match, sync_matches as scraper_sync_matches, parse_matches, fetch_html
+from core.scraper import load_config, scrape_match, sync_matches as scraper_sync_matches, parse_matches, fetch_html, scrape_results_match
 from core.scoring_engine import calculate_all_rankings, calculate_division_rankings
 from core.config import API_HOST, API_PORT, DIVISIONS
 
