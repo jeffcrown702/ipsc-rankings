@@ -240,7 +240,10 @@
         let currentDivision = null;
         let currentTab = 'overall';
         let currentStage = null;
-        let matchData = null;
+        let matchData = {};
+
+        // 立即顯示初始時間
+        document.getElementById('lastUpdate').textContent = '⏱️ ' + new Date().toLocaleString('zh-HK');
 
         async function api(path) {
             const r = await fetch(API + path);
