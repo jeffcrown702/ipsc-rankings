@@ -142,19 +142,30 @@ def calculate_division_rankings(match_id, division):
     # 建立射手查找表
     shooter_map = {s["id"]: s for s in shooters}
 
-    # ===== OVERALL 排名 =====
-    ranked = sorted(shooter_ids, key=lambda sid: shooter_totals.get(sid, 0), reverse=True)
-    top_score = shooter_totals.get(ranked[0], 1) if ranked else 1
-
-    for place, sid in enumerate(ranked, 1):
+    # ===== OVERALL 排名 (score=0 排最後) =====
+    def sort_key(sid):
+        return (0 if shooter_totals.get(sid, 0) > 0 else 1, -(shooter_totals.get(sid, 0)))
+    ranked = sorted(shooter_ids, key=sort_key)
+    # 有分數嘅射手先計 Place
+    valid_count = 0
+    top_score = 0
+    for sid in ranked:
         ts = shooter_totals.get(sid, 0)
-        pct = round((ts / top_score) * 100, 2) if top_score > 0 else 0
+        if ts > 0:
+            valid_count += 1
+            if top_score == 0:
+                top_score = ts
+
+    for place_counter, sid in enumerate(ranked, 1):
+        ts = shooter_totals.get(sid, 0)
+        place = valid_count if ts == 0 else (sum(1 for s2 in ranked[:place_counter] if shooter_totals.get(s2, 0) > 0))
+        pct = round((ts / top_score) * 100, 2) if top_score > 0 and ts > 0 else 0
         s = shooter_map[sid]
         cursor.execute("""
             INSERT OR REPLACE INTO rankings
             (match_id, division, rank_type, group_key, competitor_number,
              place, total_score, score_percent, calculated_at)
-            VALUES (?, ?, 'overall', NULL, ?, ?, ?, ?, datetime('now'))
+            VALUES (?, ?, 'overall', '', ?, ?, ?, ?, datetime('now'))
         """, (match_id, division, s["competitor_number"], place, ts, pct))
 
     # ===== CATEGORY 排名 =====
@@ -167,20 +178,29 @@ def calculate_division_rankings(match_id, division):
             cat_shooters[cat].append(s["id"])
 
     for cat, sids in cat_shooters.items():
-        ranked_cat = sorted(sids, key=lambda sid: shooter_totals.get(sid, 0), reverse=True)
-        top_cat = shooter_totals.get(ranked_cat[0], 1) if ranked_cat else 1
-        for place, sid in enumerate(ranked_cat, 1):
+        def cat_sort(sid):
+            return (0 if shooter_totals.get(sid, 0) > 0 else 1, -(shooter_totals.get(sid, 0)))
+        ranked_cat = sorted(sids, key=cat_sort)
+        top_cat = 0
+        valid_cat = 0
+        for sid in ranked_cat:
+            if shooter_totals.get(sid, 0) > 0:
+                valid_cat += 1
+                if top_cat == 0:
+                    top_cat = shooter_totals[sid]
+        for pc, sid in enumerate(ranked_cat, 1):
             ts = shooter_totals.get(sid, 0)
-            pct = round((ts / top_cat) * 100, 2) if top_cat > 0 else 0
+            place_cat = valid_cat if ts == 0 else sum(1 for s2 in ranked_cat[:pc] if shooter_totals.get(s2, 0) > 0)
+            pct = round((ts / top_cat) * 100, 2) if top_cat > 0 and ts > 0 else 0
             s = shooter_map[sid]
             cursor.execute("""
                 INSERT OR REPLACE INTO rankings
                 (match_id, division, rank_type, group_key, competitor_number,
                  place, total_score, score_percent, calculated_at)
                 VALUES (?, ?, 'category', ?, ?, ?, ?, ?, datetime('now'))
-            """, (match_id, division, cat, s["competitor_number"], place, ts, pct))
+            """, (match_id, division, cat, s["competitor_number"], place_cat, ts, pct))
 
-    # ===== CLASS 排名 =====
+    # ===== CLASS 排名 (score=0 排最後) =====
     class_shooters = {}
     for s in shooters:
         cls = s["class"].strip() if s["class"] else "U"
@@ -189,18 +209,27 @@ def calculate_division_rankings(match_id, division):
         class_shooters[cls].append(s["id"])
 
     for cls, sids in class_shooters.items():
-        ranked_cls = sorted(sids, key=lambda sid: shooter_totals.get(sid, 0), reverse=True)
-        top_cls = shooter_totals.get(ranked_cls[0], 1) if ranked_cls else 1
-        for place, sid in enumerate(ranked_cls, 1):
+        def cls_sort(sid):
+            return (0 if shooter_totals.get(sid, 0) > 0 else 1, -(shooter_totals.get(sid, 0)))
+        ranked_cls = sorted(sids, key=cls_sort)
+        top_cls = 0
+        valid_cls = 0
+        for sid in ranked_cls:
+            if shooter_totals.get(sid, 0) > 0:
+                valid_cls += 1
+                if top_cls == 0:
+                    top_cls = shooter_totals[sid]
+        for pc, sid in enumerate(ranked_cls, 1):
             ts = shooter_totals.get(sid, 0)
-            pct = round((ts / top_cls) * 100, 2) if top_cls > 0 else 0
+            place_cls = valid_cls if ts == 0 else sum(1 for s2 in ranked_cls[:pc] if shooter_totals.get(s2, 0) > 0)
+            pct = round((ts / top_cls) * 100, 2) if top_cls > 0 and ts > 0 else 0
             s = shooter_map[sid]
             cursor.execute("""
                 INSERT OR REPLACE INTO rankings
                 (match_id, division, rank_type, group_key, competitor_number,
                  place, total_score, score_percent, calculated_at)
                 VALUES (?, ?, 'class', ?, ?, ?, ?, ?, datetime('now'))
-            """, (match_id, division, cls, s["competitor_number"], place, ts, pct))
+            """, (match_id, division, cls, s["competitor_number"], place_cls, ts, pct))
 
     # ===== STAGE 排名 =====
     for stage_num in all_stages:
