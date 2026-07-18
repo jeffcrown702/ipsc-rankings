@@ -291,6 +291,13 @@ function showError(msg) {
             const nav = document.getElementById('divNav');
             nav.innerHTML = '';
             if (!matchData.divisions) return;
+            // 先加 *ALL* 掣
+            const allBtn = document.createElement('button');
+            allBtn.className = 'div-btn' + (currentDivision === '*ALL*' ? ' active' : '');
+            allBtn.textContent = '📊 All Divisions';
+            allBtn.onclick = () => selectDivision('*ALL*');
+            nav.appendChild(allBtn);
+            // 再加各 Division
             matchData.divisions.forEach(div => {
                 const btn = document.createElement('button');
                 btn.className = 'div-btn' + (div === currentDivision ? ' active' : '');

@@ -231,7 +231,7 @@ def calculate_division_rankings(match_id, division):
 
 
 def calculate_all_rankings(match_id):
-    """為比賽中所有有數據嘅 Division 計算排名"""
+    """為比賽中所有有數據嘅 Division 計算排名，另加 *ALL* 跨組排名"""
     db = get_db()
     cursor = db.cursor()
     cursor.execute("""
@@ -247,7 +247,147 @@ def calculate_all_rankings(match_id):
     for div in divisions:
         calculate_division_rankings(match_id, div)
 
-    print(f"[RANK] 比賽 #{match_id}: 所有 Division 排名完成")
+    # === *ALL* 跨 Division 排名 ===
+    division = "*ALL*"
+    db = get_db()
+    cursor = db.cursor()
+
+    # 1. 取得全部射手
+    cursor.execute("""
+        SELECT s.id, s.competitor_number, s.name, s.division,
+               s.class, s.factor, s.category, s.region
+        FROM shooters s
+        WHERE s.match_id = ?
+        ORDER BY s.competitor_number
+    """, (match_id,))
+    shooters = cursor.fetchall()
+
+    if shooters:
+        shooter_ids = [s["id"] for s in shooters]
+        shooter_map = {s["id"]: s for s in shooters}
+        placeholders = ",".join("?" for _ in shooter_ids)
+
+        # 2. 取得全部 stage_scores
+        cursor.execute(f"""
+            SELECT ss.shooter_id, ss.stage_number, ss.stage_name,
+                   ss.hit_factor, ss.pts, ss.a, ss.c, ss.d, ss.mi, ss.ns, ss.pe, ss.time
+            FROM stage_scores ss
+            WHERE ss.shooter_id IN ({placeholders})
+            ORDER BY ss.shooter_id, ss.stage_number
+        """, shooter_ids)
+        stage_rows = cursor.fetchall()
+
+        # 3. 組織數據
+        shooter_stages = {}
+        for row in stage_rows:
+            sid = row["shooter_id"]
+            if sid not in shooter_stages:
+                shooter_stages[sid] = {}
+            shooter_stages[sid][row["stage_number"]] = {
+                k: row[k] for k in ["stage_name", "hit_factor", "pts", "a", "c", "d", "mi", "ns", "pe", "time"]
+            }
+
+        # 4. 所有 Stage
+        cursor.execute(f"""
+            SELECT DISTINCT stage_number FROM stage_scores
+            WHERE shooter_id IN ({placeholders}) ORDER BY stage_number
+        """, shooter_ids)
+        all_stages = [r["stage_number"] for r in cursor.fetchall()]
+
+        # 5. Max_HF 同 Max_Stage_Score
+        stage_max_hf = {}
+        stage_max_score = {}
+        for stage_num in all_stages:
+            hf_vals = []
+            max_a = max_c = max_d = max_mi = 0
+            for sid in shooter_ids:
+                ss = shooter_stages.get(sid, {}).get(stage_num)
+                if ss and ss["time"] > 0:
+                    hf_vals.append(ss["hit_factor"])
+                    max_a = max(max_a, ss["a"])
+                    max_c = max(max_c, ss["c"])
+                    max_d = max(max_d, ss["d"])
+                    max_mi = max(max_mi, ss["mi"])
+            stage_max_hf[stage_num] = max(hf_vals) if hf_vals else 1
+            stage_max_score[stage_num] = (max_a + max_c + max_d + max_mi) * 5
+
+        # 6. 計算每人 Score
+        shooter_totals = {}
+        for sid in shooter_ids:
+            total = 0
+            for stage_num in all_stages:
+                ss = shooter_stages.get(sid, {}).get(stage_num)
+                if ss and ss["time"] > 0:
+                    mhf = stage_max_hf.get(stage_num, 1)
+                    mss = stage_max_score.get(stage_num, 0)
+                    total += (ss["hit_factor"] / mhf) * mss if mhf > 0 else 0
+            shooter_totals[sid] = round(total, 4)
+
+        # 7. 清除舊 *ALL* 排名
+        cursor.execute("DELETE FROM rankings WHERE match_id = ? AND division = ?", (match_id, division))
+
+        # === OVERALL ===
+        ranked = sorted(shooter_ids, key=lambda sid: shooter_totals.get(sid, 0), reverse=True)
+        top_score = shooter_totals.get(ranked[0], 1) if ranked else 1
+        for place, sid in enumerate(ranked, 1):
+            ts = shooter_totals.get(sid, 0)
+            pct = round((ts / top_score) * 100, 2) if top_score > 0 else 0
+            s = shooter_map[sid]
+            cursor.execute(
+                "INSERT OR REPLACE INTO rankings (match_id, division, rank_type, group_key, competitor_number, place, total_score, score_percent) VALUES (?,?,?,?,?,?,?,?)",
+                (match_id, division, "overall", None, s["competitor_number"], place, ts, pct))
+
+        # === CATEGORY ===
+        cat_shooters = {}
+        for s in shooters:
+            cat = s["category"].strip() if s["category"] else ""
+            if cat:
+                cat_shooters.setdefault(cat, []).append(s["id"])
+        for cat, sids in cat_shooters.items():
+            rc = sorted(sids, key=lambda sid: shooter_totals.get(sid, 0), reverse=True)
+            tc = shooter_totals.get(rc[0], 1) if rc else 1
+            for place, sid in enumerate(rc, 1):
+                ts = shooter_totals.get(sid, 0)
+                pct = round((ts / tc) * 100, 2) if tc > 0 else 0
+                s = shooter_map[sid]
+                cursor.execute(
+                    "INSERT OR REPLACE INTO rankings (match_id, division, rank_type, group_key, competitor_number, place, total_score, score_percent) VALUES (?,?,?,?,?,?,?,?)",
+                    (match_id, division, "category", cat, s["competitor_number"], place, ts, pct))
+
+        # === CLASS ===
+        cls_shooters = {}
+        for s in shooters:
+            cls = s["class"].strip() if s["class"] else "U"
+            cls_shooters.setdefault(cls, []).append(s["id"])
+        for cls, sids in cls_shooters.items():
+            rcls = sorted(sids, key=lambda sid: shooter_totals.get(sid, 0), reverse=True)
+            tcls = shooter_totals.get(rcls[0], 1) if rcls else 1
+            for place, sid in enumerate(rcls, 1):
+                ts = shooter_totals.get(sid, 0)
+                pct = round((ts / tcls) * 100, 2) if tcls > 0 else 0
+                s = shooter_map[sid]
+                cursor.execute(
+                    "INSERT OR REPLACE INTO rankings (match_id, division, rank_type, group_key, competitor_number, place, total_score, score_percent) VALUES (?,?,?,?,?,?,?,?)",
+                    (match_id, division, "class", cls, s["competitor_number"], place, ts, pct))
+
+        # === STAGE ===
+        for stage_num in all_stages:
+            stage_key = f"STAGE {stage_num:02d}"
+            stage_data = [(sid,
+                           shooter_stages.get(sid, {}).get(stage_num, {}).get("hit_factor", 0),
+                           shooter_stages.get(sid, {}).get(stage_num, {}).get("stage_score", 0))
+                          for sid in shooter_ids]
+            stage_data.sort(key=lambda x: x[1], reverse=True)
+            for place, (sid, hf, ss_score) in enumerate(stage_data, 1):
+                s = shooter_map[sid]
+                cursor.execute(
+                    "INSERT OR REPLACE INTO rankings (match_id, division, rank_type, group_key, competitor_number, place, total_score, score_percent) VALUES (?,?,?,?,?,?,?,?)",
+                    (match_id, division, "stage", stage_key, s["competitor_number"], place, round(ss_score, 4), round(hf, 4)))
+
+    db.commit()
+    db.close()
+    print(f"[RANK] 比賽 #{match_id}: *ALL* 跨 Division 排名完成")
+    print(f"[RANK] 比賽 #{match_id}: 所有 Division + *ALL* 排名完成")
 
 
 if __name__ == "__main__":
