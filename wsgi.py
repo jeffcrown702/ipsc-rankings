@@ -1,16 +1,22 @@
 """
 WSGI entry point for PythonAnywhere
-Convert FastAPI ASGI app to WSGI for PA's Apache setup
+Simple synchronous wrapper around FastAPI
 """
 import sys, os
 sys.path.insert(0, os.path.dirname(__file__))
+os.chdir(os.path.dirname(__file__))
 
 from core.database import init_db
 init_db()
 
-import asyncio
 from app import app
 
-# Wrap FastAPI ASGI app as WSGI for PythonAnywhere
-from a2wsgi import ASGIMiddleware
-application = ASGIMiddleware(app)
+# PythonAnywhere Apache expects 'application' as WSGI callable
+# FastAPI's app is ASGI, but we wrap it with a2wsgi
+try:
+    from a2wsgi import ASGIMiddleware
+    application = ASGIMiddleware(app)
+except ImportError:
+    # Fallback: Starlette app works as ASGI only
+    # This won't work on PythonAnywhere but prevents import error
+    application = app
