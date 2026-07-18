@@ -74,24 +74,25 @@ def calculate_division_rankings(match_id, division):
     all_stages = [row["stage_number"] for row in cursor.fetchall()]
 
     # 4. 計算每個 Stage 的 Max_HF 和 Max_Stage_Score
+    #    IPSC 標準：Max_Stage_Score = (A+C+D+MI) × 5
+    #    其中 A,C,D,MI 係該 Stage 內**單一射手**最高嘅總紙靶數
     stage_max_hf = {}
     stage_max_score = {}
     for stage_num in all_stages:
         hf_values = []
-        max_a = max_c = max_d = max_mi = 0
+        max_paper_sum = 0
         for sid in shooter_ids:
             stages = shooter_stages.get(sid, {})
             ss = stages.get(stage_num)
             if ss and ss["time"] > 0:
                 hf_values.append(ss["hit_factor"])
-                max_a = max(max_a, ss["a"])
-                max_c = max(max_c, ss["c"])
-                max_d = max(max_d, ss["d"])
-                max_mi = max(max_mi, ss["mi"])
+                paper_sum = ss["a"] + ss["c"] + ss["d"] + ss["mi"]
+                if paper_sum > max_paper_sum:
+                    max_paper_sum = paper_sum
 
         stage_max_hf[stage_num] = max(hf_values) if hf_values else 1
-        # Max_Stage_Score = (A + C + D + MI) × 5
-        stage_max_score[stage_num] = (max_a + max_c + max_d + max_mi) * 5
+        # Max_Stage_Score = (A + C + D + MI) × 5（單一射手最高紙靶總和）
+        stage_max_score[stage_num] = max_paper_sum * 5
 
     # 5. 計算每人 Stage_Score 同 Total_Score，存入 stage_scores 表
     shooter_totals = {}
@@ -328,17 +329,16 @@ def calculate_all_rankings(match_id):
         stage_max_score = {}
         for stage_num in all_stages:
             hf_vals = []
-            max_a = max_c = max_d = max_mi = 0
+            max_paper_sum = 0
             for sid in shooter_ids:
                 ss = shooter_stages.get(sid, {}).get(stage_num)
                 if ss and ss["time"] > 0:
                     hf_vals.append(ss["hit_factor"])
-                    max_a = max(max_a, ss["a"])
-                    max_c = max(max_c, ss["c"])
-                    max_d = max(max_d, ss["d"])
-                    max_mi = max(max_mi, ss["mi"])
+                    paper_sum = ss["a"] + ss["c"] + ss["d"] + ss["mi"]
+                    if paper_sum > max_paper_sum:
+                        max_paper_sum = paper_sum
             stage_max_hf[stage_num] = max(hf_vals) if hf_vals else 1
-            stage_max_score[stage_num] = (max_a + max_c + max_d + max_mi) * 5
+            stage_max_score[stage_num] = max_paper_sum * 5
 
         # 6. 計算每人 Score
         shooter_totals = {}
