@@ -497,7 +497,14 @@ function showError(msg) {
                 return;
             }
 
-            currentStage = stages[0];
+            // 如果 stage selector 已存在，只 refresh content，唔 rebuild
+            const existingContent = document.getElementById('stageContent');
+            if (existingContent && stages.includes(currentStage)) {
+                loadStageRankings();
+                return;
+            }
+
+            currentStage = stages.includes(currentStage) ? currentStage : stages[0];
 
             let html = `<div class="section-title">${currentDivision} - Stage</div>`;
             html += `<div class="stage-select">`;

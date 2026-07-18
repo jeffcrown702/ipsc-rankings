@@ -290,7 +290,8 @@ def get_rankings(match_id: int, division: str, rank_type: str = "overall",
                     AND r.competitor_number = s.competitor_number
                 LEFT JOIN stage_scores ss ON ss.shooter_id = s.id
                     AND ss.match_id = r.match_id
-                    AND ss.stage_name = r.group_key
+                    AND (ss.stage_name = r.group_key
+                         OR ss.stage_name = REPLACE(r.group_key, ' 0', ' '))
                 WHERE r.match_id = ? AND r.division = ?
                   AND r.rank_type = 'stage' AND r.group_key = ?
                 ORDER BY r.place
