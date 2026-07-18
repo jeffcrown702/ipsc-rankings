@@ -83,7 +83,7 @@ def get_matches():
     cursor.execute("""
         SELECT id, name, date, venue, level, is_completed, last_scraped
         FROM matches
-        ORDER BY id DESC
+        ORDER BY date(date) DESC, id DESC
     """)
     matches = [dict(row) for row in cursor.fetchall()]
     db.close()
