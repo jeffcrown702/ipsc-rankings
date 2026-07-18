@@ -22,7 +22,7 @@ DIVISIONS = [
 ]
 
 # 數據庫
-DB_PATH = os.path.join(os.path.dirname(__file__), "data", "ipsc_rankings.db")
+DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "ipsc_rankings.db")
 
 # FastAPI
 API_HOST = "0.0.0.0"
