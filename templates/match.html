@@ -219,6 +219,7 @@
         <button class="btn-scrape" onclick="scrapeMatch()">📡 爬取最新數據</button>
     </div>
     <div class="container">
+        <div class="last-update" id="lastUpdate">⏱️ 最後更新時間：最後更新時間：載入中...</div>
         <div class="error-box" id="errorBox"></div>
 
         <!-- Division 導覽列 -->
@@ -232,8 +233,6 @@
             <div class="loading"><span class="spinner-sm"></span> 載入排名數據...</div>
         </div>
     </div>
-    <div class="last-update" id="lastUpdate">⏱️ 載入中...</div>
-
     <script>
         const API = '';
         const MATCH_ID = parseInt('{{MATCH_ID}}');
@@ -243,7 +242,7 @@
         let matchData = {};
 
         // 立即顯示初始時間
-        document.getElementById('lastUpdate').textContent = '⏱️ ' + new Date().toLocaleString('zh-HK');
+        document.getElementById('lastUpdate').textContent = '⏱️ 最後更新時間：' + new Date().toLocaleString('zh-HK');
 
         async function api(path) {
             const r = await fetch(API + path);
@@ -344,7 +343,7 @@ function showError(msg) {
         }
 
         function selectTab(tab) {
-            document.getElementById('lastUpdate').textContent = '⏱️ ' + new Date().toLocaleString('zh-HK');
+            document.getElementById('lastUpdate').textContent = '⏱️ 最後更新時間：' + new Date().toLocaleString('zh-HK');
             currentTab = tab;
             currentStage = null;
             renderTabNav();
@@ -357,7 +356,7 @@ function showError(msg) {
         }
 
         async function loadRankings() {
-            document.getElementById('lastUpdate').textContent = '⏱️ ' + new Date().toLocaleString('zh-HK');
+            document.getElementById('lastUpdate').textContent = '⏱️ 最後更新時間：' + new Date().toLocaleString('zh-HK');
             hideError();
 
             try {
@@ -618,7 +617,7 @@ function showError(msg) {
         // 顯示最後更新時間
         function updateLastUpdate() {
             const el = document.getElementById('lastUpdate');
-            if (el) el.textContent = '⏱️ ' + new Date().toLocaleString('zh-HK');
+            if (el) el.textContent = '⏱️ 最後更新時間：' + new Date().toLocaleString('zh-HK');
         }
         updateLastUpdate();
     </script>

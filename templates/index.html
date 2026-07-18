@@ -151,6 +151,7 @@
         <p>Hong Kong IPSC / Action Air 比賽即時排名查閱</p>
     </div>
     <div class="container">
+        <div class="last-update-bar" id="lastUpdateBar"><span class="dot"></span>最後更新時間：載入中...</div>
         <div class="toolbar">
             <button class="btn btn-primary" onclick="refreshMatches()">🔄 重新整理</button>
             <button class="btn btn-warning" onclick="scrapeAll()">📡 爬取最新數據</button>
@@ -160,7 +161,6 @@
         <div class="error-banner" id="errorBanner"></div>
         <div class="loading" id="loading">載入中...</div>
         <div id="matchList"></div>
-        <div class="last-update-bar" id="lastUpdateBar"><span class="dot"></span>自動更新中...</div>
     </div>
     <div class="footer">
         Data source: <a href="https://hkg.as.ipscess.org/portal" target="_blank" style="color:#888;">hkg.as.ipscess.org</a>
@@ -173,7 +173,7 @@
         let autoRefreshTimer = null;
 
         // 立即顯示初始時間
-        document.getElementById('lastUpdateBar').innerHTML = '<span class="dot"></span>' + new Date().toLocaleString('zh-HK');
+        document.getElementById('lastUpdateBar').innerHTML = '<span class="dot"></span>最後更新時間：' + new Date().toLocaleString('zh-HK');
 
         async function api(path) {
             const r = await fetch(API + path);
@@ -187,7 +187,7 @@
             const updateBar = document.getElementById('lastUpdateBar');
             error.style.display = 'none';
             try {
-                updateBar.innerHTML = '<span class="dot"></span>' + new Date().toLocaleString('zh-HK');
+                updateBar.innerHTML = '<span class="dot"></span>最後更新時間：' + new Date().toLocaleString('zh-HK');
                 const data = await api('/api/matches');
                 list.innerHTML = data.matches.map(m => {
                     const shooterCount = m.shooter_count || 0;
