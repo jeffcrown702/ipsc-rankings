@@ -19,10 +19,10 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import uvicorn
 
-import os, sys
+import os, sys, asyncio
 sys.path.insert(0, os.path.dirname(__file__))
 from core.database import get_db, init_db
-from ipsc_scraper import sync_matches, scrape_match_verify, is_match_completed
+from core.scraper import load_config, scrape_match, sync_matches as scraper_sync_matches, parse_matches, fetch_html
 from core.scoring_engine import calculate_all_rankings, calculate_division_rankings
 from core.config import API_HOST, API_PORT, DIVISIONS
 
@@ -296,7 +296,7 @@ def get_stages(match_id: int):
 
 @app.get("/api/matches/{match_id}/scrape")
 def trigger_scrape(match_id: int):
-    """觸發爬取與計算（同步，會等一陣）"""
+    """觸發爬取與計算（異步）"""
     global scrape_status
 
     db = get_db()
@@ -307,32 +307,26 @@ def trigger_scrape(match_id: int):
         raise HTTPException(404, "比賽唔存在")
     db.close()
 
-    # 檢查是否完賽
-    completed = is_match_completed(match_id)
-    if completed:
-        db = get_db()
-        cursor = db.cursor()
-        cursor.execute("UPDATE matches SET is_completed = 1 WHERE id = ?", (match_id,))
-        db.commit()
-        db.close()
-        print(f"[API] 比賽 #{match_id} 已完賽")
-
     scrape_status["running"] = True
     scrape_status["progress"] = f"開始爬取比賽 #{match_id}..."
-    try:
-        shooters, stages = scrape_match_verify(match_id)
-        scrape_status["progress"] = f"爬取完成: {shooters} 射手, {stages} stages，開始計算排名..."
-        calculate_all_rankings(match_id)
-        scrape_status["progress"] = f"排名計算完成"
-        scrape_status["last_run"] = datetime.now().isoformat()
-        result = {"shooters": shooters, "stages": stages, "status": "success"}
-    except Exception as e:
-        scrape_status["progress"] = f"錯誤: {str(e)}"
-        result = {"error": str(e), "status": "error"}
-    finally:
-        scrape_status["running"] = False
 
-    return result
+    async def run():
+        global scrape_status
+        cfg = load_config()
+        try:
+            shooters, stages = await scrape_match(match_id, cfg["base_url"], cfg)
+            scrape_status["progress"] = f"爬取完成: {shooters} 射手, {stages} stages，開始計算排名..."
+            calculate_all_rankings(match_id)
+            scrape_status["progress"] = f"排名計算完成"
+            scrape_status["last_run"] = datetime.now().isoformat()
+        except Exception as e:
+            scrape_status["progress"] = f"錯誤: {str(e)}"
+        finally:
+            scrape_status["running"] = False
+
+    thread = threading.Thread(target=lambda: asyncio.run(run()), daemon=True)
+    thread.start()
+    return {"status": "started", "message": f"開始爬取比賽 #{match_id}"}
 
 
 @app.post("/api/scrape/run")
@@ -342,34 +336,40 @@ def run_scrape():
     if scrape_status["running"]:
         return {"status": "running", "message": "爬取進行中，請稍後"}
 
-    def task():
+    async def task():
         global scrape_status
         scrape_status["running"] = True
         scrape_status["progress"] = "同步比賽列表..."
+        cfg = load_config()
+        base_url = cfg["base_url"]
         try:
-            sync_matches()
+            # 同步比賽列表
+            html = await fetch_html(None, base_url)
+            matches = parse_matches(html)
+            db = get_db()
+            c = db.cursor()
+            for m in matches:
+                c.execute("INSERT OR IGNORE INTO matches (id, name, date, venue, level, url) VALUES (?,?,?,?,?,?)",
+                          (m["id"], m["name"], m["date"], m["venue"], m["level"], m["url"]))
+                c.execute("UPDATE matches SET name=?, date=?, venue=?, level=?, url=? WHERE id=?",
+                          (m["name"], m["date"], m["venue"], m["level"], m["url"], m["id"]))
+            db.commit()
+            db.close()
+            scrape_status["progress"] = f"同步 {len(matches)} 場比賽"
+
             db = get_db()
             cursor = db.cursor()
             cursor.execute("""
                 SELECT id, name FROM matches WHERE is_completed = 0 ORDER BY id DESC
             """)
-            active = cursor.fetchall()
+            active = [dict(r) for r in cursor.fetchall()]
             db.close()
 
             for m in active:
                 mid = m["id"]
                 scrape_status["progress"] = f"處理比賽 #{mid} ({m['name']})..."
                 scrape_status["last_run"] = datetime.now().isoformat()
-
-                completed = is_match_completed(mid)
-                if completed:
-                    db = get_db()
-                    cursor = db.cursor()
-                    cursor.execute("UPDATE matches SET is_completed=1 WHERE id=?", (mid,))
-                    db.commit()
-                    db.close()
-
-                scrape_match_verify(mid)
+                await scrape_match(mid, base_url, cfg)
                 calculate_all_rankings(mid)
 
             scrape_status["progress"] = f"全部完成"
@@ -378,7 +378,7 @@ def run_scrape():
         finally:
             scrape_status["running"] = False
 
-    thread = threading.Thread(target=task, daemon=True)
+    thread = threading.Thread(target=lambda: asyncio.run(task()), daemon=True)
     thread.start()
     return {"status": "started", "message": "爬取已開始（異步）"}
 
