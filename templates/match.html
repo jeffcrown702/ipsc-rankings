@@ -254,8 +254,11 @@ function fmtHF(v) {
     return (v && v > 0) ? v.toFixed(4) : '—';
 }
 
+function shooterLink(name, compNum) {
+    return `<a href="https://hkg.as.ipscess.org/portal/verify/${MATCH_ID}?shooter=${compNum}" target="_blank" rel="noopener" style="color:#1a1a2e;text-decoration:none;font-weight:600;">${name}</a>`;
+}
+
 function showError(msg) {
-            box.textContent = '❌ ' + msg;
             box.style.display = 'block';
         }
 
@@ -375,7 +378,7 @@ function showError(msg) {
                 html += `<tr>
                     <td class="${pc}">${r.place}</td>
                     <td>${r.competitor_number}</td>
-                    <td><strong>${r.name}</strong></td>
+                    <td>${shooterLink(r.name, r.competitor_number)}</td>
                     <td>${r.category || ''}</td>
                     <td>${r.class || ''}</td>
                     <td>${r.factor || ''}</td>
@@ -417,7 +420,7 @@ function showError(msg) {
                     html += `<tr>
                         <td class="${pc}">${r.place}</td>
                         <td>${r.competitor_number}</td>
-                        <td><strong>${r.name}</strong></td>
+                        <td>${shooterLink(r.name, r.competitor_number)}</td>
                         <td>${r.category || ''}</td>
                         <td>${r.class || ''}</td>
                         <td>${r.factor || ''}</td>
@@ -459,7 +462,7 @@ function showError(msg) {
                     html += `<tr>
                         <td class="${pc}">${r.place}</td>
                         <td>${r.competitor_number}</td>
-                        <td><strong>${r.name}</strong></td>
+                        <td>${shooterLink(r.name, r.competitor_number)}</td>
                         <td>${r.category || ''}</td>
                         <td>${r.class || ''}</td>
                         <td>${r.factor || ''}</td>
@@ -523,7 +526,7 @@ function showError(msg) {
                     html += `<tr>
                         <td class="${pc}">${r.place}</td>
                         <td>${r.competitor_number}</td>
-                        <td><strong>${r.name}</strong></td>
+                        <td>${shooterLink(r.name, r.competitor_number)}</td>
                         <td>${r.category || ''}</td>
                         <td>${r.class || ''}</td>
                         <td>${r.factor || ''}</td>

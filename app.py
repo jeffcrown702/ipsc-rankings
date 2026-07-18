@@ -473,7 +473,9 @@ def run_scrape():
 def get_scrape_status():
     """獲取爬取狀態"""
     s = dict(scrape_status)
-    s["next_auto_scrape_sec"] = max(0, 300 - (time.time() - _last_auto_scrape.get(0, 0))) if _last_auto_scrape else 300
+    s["next_auto_scrape_sec"] = 300
+    if _last_auto_scrape:
+        s["next_auto_scrape_sec"] = max(5, 300 - int(time.time() - max(_last_auto_scrape.values())))
     s["locked"] = not _scrape_lock.acquire(blocking=False)
     if not s["locked"]:
         _scrape_lock.release()
