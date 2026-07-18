@@ -1,6 +1,6 @@
-# IPSC Rankimgs — Python
+# IPSC Rankings
 
-# 數據庫（自動生成，唔 commit）
+# 數據庫（自動生成）
 data/
 *.db
 *.db-wal

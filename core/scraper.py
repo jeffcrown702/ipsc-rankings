@@ -123,12 +123,26 @@ def parse_matches(html):
         h5 = a_tag.find("h5")
         name = h5.get_text(strip=True) if h5 else ""
 
-        # 取出日期/場地/級別（分行文字）
-        full_text = a_tag.get_text("\n", strip=True)
-        parts = [p.strip() for p in full_text.split("\n") if p.strip()]
-        date = parts[1] if len(parts) > 1 else ""
-        venue = parts[2] if len(parts) > 2 else ""
-        level = parts[3] if len(parts) > 3 else ""
+        # 取出日期/場地/級別
+        # 真實 HTML 有換行；但用 get_text(" ") flat 亦可
+        full_text = a_tag.get_text(" ", strip=True)
+        # 移除 h5 文字（已用 name 取）
+        if name:
+            full_text = full_text.replace(name, "", 1).strip()
+        parts = [p.strip() for p in full_text.split() if p.strip()]
+        date = ""
+        venue = ""
+        level = ""
+        # 第一個 token 通常係日期（dd/mm/yyyy）
+        if parts:
+            date_match = re.search(r"\d{2}/\d{2}/\d{4}", parts[0])
+            if date_match:
+                date = date_match.group()
+                parts = parts[1:]
+        if parts:
+            venue = parts[0]
+        if len(parts) > 1:
+            level = " ".join(parts[1:])
 
         matches.append({
             "id": match_id,
