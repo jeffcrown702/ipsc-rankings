@@ -112,13 +112,15 @@ def get_match(match_id: int):
         raise HTTPException(404, "比賽唔存在")
     match_data = dict(match)
 
-    # 取得有數據嘅 Division
+    # 取得有數據嘅 Division（跟 config 順序）
     cursor.execute("""
         SELECT DISTINCT division FROM shooters
         WHERE match_id = ? AND division IS NOT NULL AND division != ''
-        ORDER BY division
     """, (match_id,))
-    match_data["divisions"] = [r["division"] for r in cursor.fetchall()]
+    db_divs = {r["division"] for r in cursor.fetchall()}
+    # 跟 config DIVISIONS 順序排列
+    from core.config import DIVISIONS
+    match_data["divisions"] = [d for d in DIVISIONS if d in db_divs]
 
     # 射手總數
     cursor.execute("SELECT COUNT(*) as cnt FROM shooters WHERE match_id = ?", (match_id,))
