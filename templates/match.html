@@ -334,6 +334,7 @@ function showError(msg) {
 
         function selectDivision(div) {
             currentDivision = div;
+            updateLastUpdate();
             renderDivNav();
             renderTabNav();
             loadRankings();
@@ -602,6 +603,7 @@ function showError(msg) {
             autoRefreshTimer = setInterval(() => {
                 // 只 reload 排名，唔 reload 成個頁面
                 if (currentDivision && currentTab) {
+                    updateLastUpdate();
                     loadRankings();
                 }
             }, intervalMs);
