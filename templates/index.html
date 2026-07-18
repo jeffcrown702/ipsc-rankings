@@ -151,9 +151,7 @@
 
         async function refreshMatches() {
             const list = document.getElementById('matchList');
-            const loading = document.getElementById('loading');
             const error = document.getElementById('errorBanner');
-            loading.style.display = 'block';
             error.style.display = 'none';
             try {
                 const data = await api('/api/matches');

@@ -345,8 +345,6 @@ function showError(msg) {
         }
 
         async function loadRankings() {
-            const content = document.getElementById('rankContent');
-            content.innerHTML = '<div class="loading"><span class="spinner-sm"></span> 載入中...</div>';
             hideError();
 
             try {
@@ -360,8 +358,12 @@ function showError(msg) {
                     await loadStageList();
                 }
             } catch (e) {
+                // 出錯時保留舊畫面，唔好清空
+                if (!document.getElementById('rankContent').querySelector('table.ranking')) {
+                    document.getElementById('rankContent').innerHTML =
+                        '<div class="no-data">⚠️ 載入失敗</div>';
+                }
                 showError('載入排名失敗: ' + e.message);
-                content.innerHTML = '';
             }
         }
 
