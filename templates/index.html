@@ -141,6 +141,7 @@
     <script>
         const API = '';
         let statusCheckTimer = null;
+        let autoRefreshTimer = null;
 
         async function api(path) {
             const r = await fetch(API + path);
@@ -238,6 +239,9 @@
         }
 
         refreshMatches();
+
+        // 自動刷新主頁（每 30 秒）
+        autoRefreshTimer = setInterval(refreshMatches, 30000);
     </script>
 </body>
 </html>

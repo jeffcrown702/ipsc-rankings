@@ -19,7 +19,10 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import uvicorn
 
-import os, sys, asyncio, aiohttp
+import os, sys, asyncio, aiohttp, threading, time
+from datetime import datetime, timedelta
+from contextlib import contextmanager
+
 sys.path.insert(0, os.path.dirname(__file__))
 from core.database import get_db, init_db
 from core.scraper import load_config, scrape_match, sync_matches as scraper_sync_matches, parse_matches, fetch_html
@@ -37,13 +40,37 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 爬取狀態
+# 爬取狀態 + 線程鎖
 scrape_status = {"running": False, "last_run": None, "progress": ""}
+_scrape_lock = threading.Lock()
+_last_auto_scrape = {}
+
+
+def _should_auto_scrape(match_id, cooldown_sec=120):
+    """Cooldown 檢查：同一場比賽至少隔 cooldown_sec 秒先可以再爬"""
+    now = time.time()
+    last = _last_auto_scrape.get(match_id, 0)
+    if now - last >= cooldown_sec:
+        _last_auto_scrape[match_id] = now
+        return True
+    return False
 
 
 @app.on_event("startup")
 def startup():
     init_db()
+    # 定時任務：每 5 分鐘自動爬取進行中比賽
+    def cron_loop():
+        while True:
+            time.sleep(300)  # 5 分鐘
+            try:
+                _auto_scrape_active_matches()
+            except Exception as e:
+                print(f"[CRON] 自動爬取出錯: {e}")
+
+    t = threading.Thread(target=cron_loop, daemon=True)
+    t.start()
+    print("[CRON] 自動爬取已啟動（每 5 分鐘）")
 
 
 # ===================== API Routes =====================
@@ -296,44 +323,96 @@ def get_stages(match_id: int):
 
 @app.get("/api/matches/{match_id}/scrape")
 def trigger_scrape(match_id: int):
-    """觸發爬取與計算（異步）"""
+    """觸發爬取與計算（異步，線程安全）"""
     global scrape_status
 
-    db = get_db()
-    cursor = db.cursor()
-    cursor.execute("SELECT id FROM matches WHERE id = ?", (match_id,))
-    if not cursor.fetchone():
-        db.close()
-        raise HTTPException(404, "比賽唔存在")
-    db.close()
+    if not _scrape_lock.acquire(blocking=False):
+        return {"status": "busy", "message": "爬取系統繁忙，請稍後再試"}
 
-    scrape_status["running"] = True
-    scrape_status["progress"] = f"開始爬取比賽 #{match_id}..."
+    try:
+        if scrape_status["running"]:
+            return {"status": "running", "message": "爬取進行中，請稍後"}
+
+        db = get_db()
+        cursor = db.cursor()
+        cursor.execute("SELECT id FROM matches WHERE id = ?", (match_id,))
+        if not cursor.fetchone():
+            db.close()
+            raise HTTPException(404, "比賽唔存在")
+        db.close()
+
+        scrape_status["running"] = True
+        scrape_status["progress"] = f"開始爬取比賽 #{match_id}..."
+
+        async def run():
+            global scrape_status
+            cfg = load_config()
+            try:
+                shooters, stages = await scrape_match(match_id, cfg["base_url"], cfg)
+                scrape_status["progress"] = f"爬取完成: {shooters} 射手, {stages} stages，開始計算排名..."
+                calculate_all_rankings(match_id)
+                scrape_status["progress"] = f"排名計算完成"
+                scrape_status["last_run"] = datetime.now().isoformat()
+            except Exception as e:
+                scrape_status["progress"] = f"錯誤: {str(e)}"
+                import traceback; traceback.print_exc()
+            finally:
+                scrape_status["running"] = False
+                _scrape_lock.release()
+
+        thread = threading.Thread(target=lambda: asyncio.run(run()), daemon=True)
+        thread.start()
+        return {"status": "started", "message": f"開始爬取比賽 #{match_id}"}
+    except Exception:
+        _scrape_lock.release()
+        raise
+
+
+def _auto_scrape_active_matches():
+    """自動爬取所有進行中比賽（背景 cron 用）"""
+    cfg = load_config()
+    base_url = cfg["base_url"]
 
     async def run():
-        global scrape_status
-        cfg = load_config()
-        try:
-            shooters, stages = await scrape_match(match_id, cfg["base_url"], cfg)
-            scrape_status["progress"] = f"爬取完成: {shooters} 射手, {stages} stages，開始計算排名..."
-            calculate_all_rankings(match_id)
-            scrape_status["progress"] = f"排名計算完成"
-            scrape_status["last_run"] = datetime.now().isoformat()
-        except Exception as e:
-            scrape_status["progress"] = f"錯誤: {str(e)}"
-        finally:
-            scrape_status["running"] = False
+        db = get_db()
+        c = db.cursor()
+        c.execute("SELECT id, name FROM matches WHERE is_completed = 0 ORDER BY id DESC")
+        active = [dict(r) for r in c.fetchall()]
+        db.close()
 
-    thread = threading.Thread(target=lambda: asyncio.run(run()), daemon=True)
-    thread.start()
-    return {"status": "started", "message": f"開始爬取比賽 #{match_id}"}
+        for m in active:
+            mid = m["id"]
+            if not _should_auto_scrape(mid, cooldown_sec=120):
+                continue
+            if not _scrape_lock.acquire(blocking=False):
+                continue
+            try:
+                if scrape_status["running"]:
+                    _scrape_lock.release()
+                    continue
+                scrape_status["running"] = True
+                scrape_status["progress"] = f"[自動] 爬取比賽 #{mid}..."
+                await scrape_match(mid, base_url, cfg)
+                calculate_all_rankings(mid)
+                scrape_status["progress"] = f"[自動] 比賽 #{mid} 完成"
+                scrape_status["last_run"] = datetime.now().isoformat()
+            except Exception as e:
+                scrape_status["progress"] = f"[自動] 錯誤: {e}"
+            finally:
+                scrape_status["running"] = False
+                _scrape_lock.release()
+
+    asyncio.run(run())
 
 
 @app.post("/api/scrape/run")
 def run_scrape():
-    """手動執行爬取所有比賽（異步）"""
+    """手動執行爬取所有比賽（異步，線程安全）"""
     global scrape_status
+    if not _scrape_lock.acquire(blocking=False):
+        return {"status": "busy", "message": "爬取系統繁忙，請稍後再試"}
     if scrape_status["running"]:
+        _scrape_lock.release()
         return {"status": "running", "message": "爬取進行中，請稍後"}
 
     async def task():
@@ -383,6 +462,7 @@ def run_scrape():
             import traceback; traceback.print_exc()
         finally:
             scrape_status["running"] = False
+            _scrape_lock.release()
 
     thread = threading.Thread(target=lambda: asyncio.run(task()), daemon=True)
     thread.start()
@@ -392,7 +472,13 @@ def run_scrape():
 @app.get("/api/scrape/status")
 def get_scrape_status():
     """獲取爬取狀態"""
-    return scrape_status
+    s = dict(scrape_status)
+    s["next_auto_scrape_sec"] = max(0, 300 - (time.time() - _last_auto_scrape.get(0, 0))) if _last_auto_scrape else 300
+    s["locked"] = not _scrape_lock.acquire(blocking=False)
+    if not s["locked"]:
+        _scrape_lock.release()
+    s["cooldown_sec"] = 120
+    return s
 
 
 @app.get("/api/matches/{match_id}/recalculate")

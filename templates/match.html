@@ -561,8 +561,21 @@ function showError(msg) {
             }
         }
 
+        // 自動刷新
+        let autoRefreshTimer = null;
+        function startAutoRefresh(intervalMs = 10000) {
+            if (autoRefreshTimer) clearInterval(autoRefreshTimer);
+            autoRefreshTimer = setInterval(() => {
+                // 只 reload 排名，唔 reload 成個頁面
+                if (currentDivision && currentTab) {
+                    loadRankings();
+                }
+            }, intervalMs);
+        }
+
         // 啟動
         loadMatch();
+        startAutoRefresh(10000);
     </script>
 </body>
 </html>
