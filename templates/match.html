@@ -118,11 +118,17 @@
         .cat-title {
             font-size: 16px;
             font-weight: 700;
-            margin: 20px 0 8px;
-            color: #1a1a2e;
-            padding: 8px 12px;
-            background: #e8e8f0;
-            border-radius: 6px;
+        .scrape-section {
+            margin-top: 16px;
+            padding: 12px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+        .last-update {
+            text-align: right;
+            color: #999;
+            font-size: 11px;
+            padding: 4px 8px 10px;
         }
         .cat-title:first-child { margin-top: 0; }
 
@@ -226,6 +232,7 @@
             <div class="loading"><span class="spinner-sm"></span> 載入排名數據...</div>
         </div>
     </div>
+    <div class="last-update" id="lastUpdate">⏱️ 載入中...</div>
 
     <script>
         const API = '';
@@ -567,7 +574,6 @@ function showError(msg) {
             }
         }
 
-        // ----- SCRAPE -----
         async function scrapeMatch() {
             const btn = document.querySelector('.btn-scrape');
             btn.textContent = '⏳ 爬取中...';
@@ -604,6 +610,12 @@ function showError(msg) {
         // 啟動
         loadMatch();
         startAutoRefresh(10000);
+        // 顯示最後更新時間
+        function updateLastUpdate() {
+            const el = document.getElementById('lastUpdate');
+            if (el) el.textContent = '⏱️ ' + new Date().toLocaleString('zh-HK');
+        }
+        updateLastUpdate();
     </script>
 </body>
 </html>
