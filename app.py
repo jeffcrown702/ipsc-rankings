@@ -83,7 +83,7 @@ def get_matches():
     cursor.execute("""
         SELECT id, name, date, venue, level, is_completed, last_scraped
         FROM matches
-        ORDER BY date(date) DESC, id DESC
+        ORDER BY substr(date,7,4)||'-'||substr(date,4,2)||'-'||substr(date,1,2) DESC, id DESC
     """)
     matches = [dict(row) for row in cursor.fetchall()]
     db.close()
@@ -278,10 +278,19 @@ def get_rankings(match_id: int, division: str, rank_type: str = "overall",
             cursor.execute("""
                 SELECT r.place, r.competitor_number, r.total_score AS stage_score,
                        r.score_percent AS hit_factor,
+                       ss.pts AS points, ss.time AS stage_time,
+                       ROUND(r.score_percent * 100.0 / NULLIF((
+                           SELECT MAX(r2.score_percent) FROM rankings r2
+                           WHERE r2.match_id = r.match_id AND r2.division = r.division
+                             AND r2.rank_type = 'stage' AND r2.group_key = r.group_key
+                       ), 0), 2) AS score_percent,
                        s.name, s.division, s.class, s.factor, s.category, s.region
                 FROM rankings r
                 JOIN shooters s ON r.match_id = s.match_id
                     AND r.competitor_number = s.competitor_number
+                LEFT JOIN stage_scores ss ON ss.shooter_id = s.id
+                    AND ss.match_id = r.match_id
+                    AND ss.stage_name = r.group_key
                 WHERE r.match_id = ? AND r.division = ?
                   AND r.rank_type = 'stage' AND r.group_key = ?
                 ORDER BY r.place

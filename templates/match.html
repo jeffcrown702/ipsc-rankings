@@ -526,7 +526,8 @@ function showError(msg) {
                     <thead><tr>
                         <th>Place</th><th>#</th><th>Shooter</th>
                         <th>Category</th><th>Class</th><th>Factor</th>
-                        <th>Hit Factor</th><th>Stage Score</th>
+                        <th>Region</th><th>Points</th><th>Time</th>
+                        <th>Hit Factor</th><th>Total Score</th><th>Score %</th>
                     </tr></thead><tbody>`;
 
                 rows.forEach(r => {
@@ -538,8 +539,12 @@ function showError(msg) {
                         <td>${r.category || ''}</td>
                         <td>${r.class || ''}</td>
                         <td>${r.factor || ''}</td>
+                        <td>${r.region || ''}</td>
+                        <td>${r.points || '—'}</td>
+                        <td>${r.stage_time ? parseFloat(r.stage_time).toFixed(2) : '—'}</td>
                         <td><strong>${fmtHF(r.hit_factor)}</strong></td>
                         <td>${fmtScore(r.stage_score)}</td>
+                        <td>${r.score_percent ? parseFloat(r.score_percent).toFixed(2) + '%' : '—'}</td>
                     </tr>`;
                 });
 
