@@ -19,7 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import uvicorn
 
-import os, sys, asyncio
+import os, sys, asyncio, aiohttp
 sys.path.insert(0, os.path.dirname(__file__))
 from core.database import get_db, init_db
 from core.scraper import load_config, scrape_match, sync_matches as scraper_sync_matches, parse_matches, fetch_html
@@ -343,8 +343,13 @@ def run_scrape():
         cfg = load_config()
         base_url = cfg["base_url"]
         try:
-            # 同步比賽列表
-            html = await fetch_html(None, base_url)
+            # 同步比賽列表 — 用 requests fallback
+            import requests as req
+            resp = req.get(base_url, timeout=30, headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            })
+            resp.raise_for_status()
+            html = resp.text
             matches = parse_matches(html)
             db = get_db()
             c = db.cursor()
@@ -365,9 +370,9 @@ def run_scrape():
             active = [dict(r) for r in cursor.fetchall()]
             db.close()
 
-            for m in active:
-                mid = m["id"]
-                scrape_status["progress"] = f"處理比賽 #{mid} ({m['name']})..."
+            for m_dict in active:
+                mid = m_dict["id"]
+                scrape_status["progress"] = f"處理比賽 #{mid} ({m_dict['name']})..."
                 scrape_status["last_run"] = datetime.now().isoformat()
                 await scrape_match(mid, base_url, cfg)
                 calculate_all_rankings(mid)
@@ -375,6 +380,7 @@ def run_scrape():
             scrape_status["progress"] = f"全部完成"
         except Exception as e:
             scrape_status["progress"] = f"錯誤: {e}"
+            import traceback; traceback.print_exc()
         finally:
             scrape_status["running"] = False
 

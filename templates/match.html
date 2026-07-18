@@ -241,8 +241,20 @@
             return r.json();
         }
 
-        function showError(msg) {
-            const box = document.getElementById('errorBox');
+        function fmtScore(v) {
+    v = parseFloat(v);
+    return (v && v > 0) ? v.toFixed(4) : '—';
+}
+function fmtPct(v) {
+    v = parseFloat(v);
+    return (v && v > 0) ? v.toFixed(2) + '%' : '—';
+}
+function fmtHF(v) {
+    v = parseFloat(v);
+    return (v && v > 0) ? v.toFixed(4) : '—';
+}
+
+function showError(msg) {
             box.textContent = '❌ ' + msg;
             box.style.display = 'block';
         }
@@ -368,8 +380,8 @@
                     <td>${r.class || ''}</td>
                     <td>${r.factor || ''}</td>
                     <td>${r.region || ''}</td>
-                    <td><strong>${parseFloat(r.total_score).toFixed(4)}</strong></td>
-                    <td>${parseFloat(r.score_percent).toFixed(2)}%</td>
+                    <td><strong>${fmtScore(r.total_score)}</strong></td>
+                    <td>${fmtPct(r.score_percent)}</td>
                 </tr>`;
             });
 
@@ -410,8 +422,8 @@
                         <td>${r.class || ''}</td>
                         <td>${r.factor || ''}</td>
                         <td>${r.region || ''}</td>
-                        <td><strong>${parseFloat(r.total_score).toFixed(4)}</strong></td>
-                        <td>${parseFloat(r.score_percent).toFixed(2)}%</td>
+                        <td><strong>${fmtScore(r.total_score)}</strong></td>
+                        <td>${fmtPct(r.score_percent)}</td>
                     </tr>`;
                 });
                 html += '</tbody></table></div>';
@@ -452,8 +464,8 @@
                         <td>${r.class || ''}</td>
                         <td>${r.factor || ''}</td>
                         <td>${r.region || ''}</td>
-                        <td><strong>${parseFloat(r.total_score).toFixed(4)}</strong></td>
-                        <td>${parseFloat(r.score_percent).toFixed(2)}%</td>
+                        <td><strong>${fmtScore(r.total_score)}</strong></td>
+                        <td>${fmtPct(r.score_percent)}</td>
                     </tr>`;
                 });
                 html += '</tbody></table></div>';
@@ -515,8 +527,8 @@
                         <td>${r.category || ''}</td>
                         <td>${r.class || ''}</td>
                         <td>${r.factor || ''}</td>
-                        <td><strong>${parseFloat(r.score_percent || 0).toFixed(4)}</strong></td>
-                        <td>${parseFloat(r.total_score || 0).toFixed(4)}</td>
+                        <td><strong>${fmtHF(r.score_percent)}</strong></td>
+                        <td>${fmtScore(r.total_score)}</td>
                     </tr>`;
                 });
 

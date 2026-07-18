@@ -157,11 +157,19 @@
             try {
                 const data = await api('/api/matches');
                 list.innerHTML = data.matches.map(m => {
-                    const statusClass = m.is_completed ? 'status-completed' :
-                        (m.shooter_count > 0 ? 'status-live' : '');
-                    const statusLabel = m.is_completed ? '✅ 已完成' :
-                        (m.shooter_count > 0 ? '🟡 進行中' : '🔴 未開始');
-                    const link = m.is_completed ? `/match/${m.id}` : `/match/${m.id}`;
+                    const shooterCount = m.shooter_count || 0;
+                    let statusClass, statusLabel;
+                    if (m.is_completed) {
+                        statusClass = 'status-completed';
+                        statusLabel = '✅ 已完成';
+                    } else if (shooterCount > 0) {
+                        statusClass = 'status-live';
+                        statusLabel = '🟡 進行中';
+                    } else {
+                        statusClass = '';
+                        statusLabel = '🔴 未開始';
+                    }
+                    const link = `/match/${m.id}`;
                     return `<a href="${link}" class="match-card">
                         <div class="top-row">
                             <span class="match-name">${m.name}</span>
@@ -170,7 +178,7 @@
                         <div class="match-meta">
                             ${m.venue || ''} ${m.level ? '· ' + m.level : ''}
                             <span class="status-badge ${statusClass}">${statusLabel}</span>
-                            <span style="margin-left:12px;color:#666;">👤 ${m.shooter_count || 0} 位射手</span>
+                            <span style="margin-left:12px;color:#666;">👤 ${shooterCount} 位射手</span>
                         </div>
                     </a>`;
                 }).join('');
