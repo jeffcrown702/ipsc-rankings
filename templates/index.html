@@ -103,6 +103,20 @@
             margin-right: 6px;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
+        .last-update-bar {
+            text-align: center;
+            color: #888;
+            font-size: 11px;
+            padding: 8px 4px 14px;
+        }
+        .last-update-bar .dot {
+            display: inline-block;
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            background: #28a745;
+            margin-right: 4px;
+            vertical-align: middle;
+        }
         .footer {
             text-align: center;
             padding: 24px;
@@ -132,6 +146,7 @@
         <div class="error-banner" id="errorBanner"></div>
         <div class="loading" id="loading">載入中...</div>
         <div id="matchList"></div>
+        <div class="last-update-bar" id="lastUpdateBar"><span class="dot"></span>自動更新中...</div>
     </div>
     <div class="footer">
         Data source: <a href="https://hkg.as.ipscess.org/portal" target="_blank" style="color:#888;">hkg.as.ipscess.org</a>
@@ -152,8 +167,10 @@
         async function refreshMatches() {
             const list = document.getElementById('matchList');
             const error = document.getElementById('errorBanner');
+            const updateBar = document.getElementById('lastUpdateBar');
             error.style.display = 'none';
             try {
+                updateBar.innerHTML = '<span class="dot"></span>' + new Date().toLocaleString('zh-HK');
                 const data = await api('/api/matches');
                 list.innerHTML = data.matches.map(m => {
                     const shooterCount = m.shooter_count || 0;

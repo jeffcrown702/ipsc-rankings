@@ -333,6 +333,7 @@ function showError(msg) {
         }
 
         function selectTab(tab) {
+            document.getElementById('lastUpdate').textContent = '⏱️ ' + new Date().toLocaleString('zh-HK');
             currentTab = tab;
             currentStage = null;
             renderTabNav();
@@ -345,6 +346,7 @@ function showError(msg) {
         }
 
         async function loadRankings() {
+            document.getElementById('lastUpdate').textContent = '⏱️ ' + new Date().toLocaleString('zh-HK');
             hideError();
 
             try {
