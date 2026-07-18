@@ -8,8 +8,8 @@
 5. Total Score = Σ 所有 Stage_Score
 """
 import sqlite3
-from database import get_db
-from config import DIVISIONS, CATEGORIES, CLASSES
+from core.database import get_db
+from core.config import DIVISIONS, CATEGORIES, CLASSES
 
 
 def calculate_division_rankings(match_id, division):

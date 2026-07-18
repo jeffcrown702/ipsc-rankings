@@ -1,7 +1,7 @@
 """IPSC 排名系統 - 數據庫模型"""
 import sqlite3
 import os
-from config import DB_PATH
+from core.config import DB_PATH
 
 
 def get_db():
