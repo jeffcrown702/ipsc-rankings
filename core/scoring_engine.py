@@ -159,7 +159,10 @@ def calculate_division_rankings(match_id, division):
 
     for place_counter, sid in enumerate(ranked, 1):
         ts = shooter_totals.get(sid, 0)
-        place = valid_count if ts == 0 else (sum(1 for s2 in ranked[:place_counter] if shooter_totals.get(s2, 0) > 0))
+        if ts > 0:
+            place = sum(1 for s2 in ranked[:place_counter] if shooter_totals.get(s2, 0) > 0)
+        else:
+            place = 0  # 無分選手 place=0，前端會顯示「—」
         pct = round((ts / top_score) * 100, 2) if top_score > 0 and ts > 0 else 0
         s = shooter_map[sid]
         cursor.execute("""
@@ -191,7 +194,10 @@ def calculate_division_rankings(match_id, division):
                     top_cat = shooter_totals[sid]
         for pc, sid in enumerate(ranked_cat, 1):
             ts = shooter_totals.get(sid, 0)
-            place_cat = valid_cat if ts == 0 else sum(1 for s2 in ranked_cat[:pc] if shooter_totals.get(s2, 0) > 0)
+            if ts > 0:
+                place_cat = sum(1 for s2 in ranked_cat[:pc] if shooter_totals.get(s2, 0) > 0)
+            else:
+                place_cat = 0  # 無分選手 place=0
             pct = round((ts / top_cat) * 100, 2) if top_cat > 0 and ts > 0 else 0
             s = shooter_map[sid]
             cursor.execute("""
@@ -222,7 +228,10 @@ def calculate_division_rankings(match_id, division):
                     top_cls = shooter_totals[sid]
         for pc, sid in enumerate(ranked_cls, 1):
             ts = shooter_totals.get(sid, 0)
-            place_cls = valid_cls if ts == 0 else sum(1 for s2 in ranked_cls[:pc] if shooter_totals.get(s2, 0) > 0)
+            if ts > 0:
+                place_cls = sum(1 for s2 in ranked_cls[:pc] if shooter_totals.get(s2, 0) > 0)
+            else:
+                place_cls = 0  # 無分選手 place=0
             pct = round((ts / top_cls) * 100, 2) if top_cls > 0 and ts > 0 else 0
             s = shooter_map[sid]
             cursor.execute("""

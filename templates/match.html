@@ -426,8 +426,9 @@ function showError(msg) {
                     </tr></thead><tbody>`;
                 rankings.forEach(r => {
                     const pc = r.place <= 3 ? `place-${r.place}` : '';
+                    const displayPlace = r.place > 0 ? r.place : '—';
                     html += `<tr>
-                        <td class="${pc}">${r.place}</td>
+                        <td class="${pc}">${displayPlace}</td>
                         <td>${r.competitor_number}</td>
                         <td>${shooterLink(r.name, r.competitor_number)}</td>
                         <td>${r.category || ''}</td>
@@ -468,8 +469,9 @@ function showError(msg) {
                     </tr></thead><tbody>`;
                 rankings.forEach(r => {
                     const pc = r.place <= 3 ? `place-${r.place}` : '';
+                    const displayPlace = r.place > 0 ? r.place : '—';
                     html += `<tr>
-                        <td class="${pc}">${r.place}</td>
+                        <td class="${pc}">${displayPlace}</td>
                         <td>${r.competitor_number}</td>
                         <td>${shooterLink(r.name, r.competitor_number)}</td>
                         <td>${r.category || ''}</td>
@@ -539,8 +541,9 @@ function showError(msg) {
 
                 rows.forEach(r => {
                     const pc = r.place <= 3 ? `place-${r.place}` : '';
+                    const displayPlace = r.place > 0 ? r.place : '—';
                     html += `<tr>
-                        <td class="${pc}">${r.place}</td>
+                        <td class="${pc}">${displayPlace}</td>
                         <td>${r.competitor_number}</td>
                         <td>${shooterLink(r.name, r.competitor_number)}</td>
                         <td>${r.category || ''}</td>
