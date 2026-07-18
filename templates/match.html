@@ -505,7 +505,7 @@ function showError(msg) {
                 const active = s === currentStage ? ' active' : '';
                 html += `<button class="stage-btn${active}" onclick="selectStage('${s}')">${s}</button>`;
             });
-            html += `</div><div id="stageContent"><div class="loading"><span class="spinner-sm"></span> 載入中...</div></div>`;
+            html += `</div><div id="stageContent"></div>`;
             content.innerHTML = html;
 
             loadStageRankings();
@@ -515,7 +515,6 @@ function showError(msg) {
             if (!currentStage) return;
             const content = document.getElementById('stageContent');
             if (!content) return;
-            content.innerHTML = '<div class="loading"><span class="spinner-sm"></span> 載入中...</div>';
 
             try {
                 const data = await api(`/api/matches/${MATCH_ID}/rankings?division=${currentDivision}&rank_type=stage&group_key=${encodeURIComponent(currentStage)}`);
