@@ -247,13 +247,15 @@ def parse_verify_page(html):
     # 若目標網站的 class/id 有變，請修改這裡。
 
     # 1. 檢查是否為有效頁面（有選手姓名）
-    #    Selector 目標: 包含 "編號 姓名, 姓氏" 的文字節點
-    name_elem = soup.find(string=re.compile(r"^\d+\s+\w+,"))
+    #    Selector 目標: 包含 "編號 姓名, 姓氏" 嘅 div
+    #    真實 HTML: <div class="col-4">\n                1 Cheng, Ka Ling            </div>
+    name_elem = soup.find(string=re.compile(r"\d+\s+\w+,"))
     if not name_elem:
         return None
 
     # 2. 提取選手基本資料行
-    #    Selector 目標: 包含 "DIV:", "CLASSE:", "FATOR:", "CAT:" 的文字
+    #    Selector 目標: 包含 "DIV:", "CLASSE:", "FATOR:", "CAT:" 嘅文字
+    #    真實 HTML: <div class="col-8 text-right">\n                DIV: Standard CLASSE: C FATOR: Minor CAT:  Lady
     info_text = soup.find(string=re.compile(r"DIV:"))
     if not info_text:
         return None
@@ -473,9 +475,11 @@ def save_shooter(conn, match_id, competitor_number, data, cursor=None):
 #  6. 主流程控制
 # ═══════════════════════════════════════════════════
 
-async def scrape_match(match_id, base_url, cfg, use_mock=False):
+import time as _time
+
+def scrape_match(match_id, base_url, cfg, use_mock=False):
     """
-    爬取單一比賽的全部射手。
+    爬取單一比賽的全部射手（同步 requests 版本）。
 
     流程:
       1. 從 competitor_number = 1 開始遞增
@@ -489,53 +493,72 @@ async def scrape_match(match_id, base_url, cfg, use_mock=False):
     streak_limit = cfg["scraper"]["empty_streak_limit"]
     timeout = cfg["scraper"]["timeout_sec"]
 
-    print(f"[SCRAPE] 開始爬取比賽 #{match_id} (mock={use_mock})")
+    print(f"[SCRAPE] 開始爬取比賽 #{match_id} (mock={use_mock}, max={max_num}, streak_limit={streak_limit})")
     total_shooters = 0
     total_stages = 0
     empty_streak = 0
+    http_errors = 0
+
+    import requests as _req
+    _session = _req.Session()
+    _session.headers.update({
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9,zh-HK;q=0.8",
+        "Referer": base_url,
+    })
 
     conn = get_db()
     cursor = conn.cursor()
 
     try:
-        async with aiohttp.ClientSession() if aiohttp else None as session:
-            for num in range(1, max_num + 1):
-                if use_mock:
-                    # ── Mock 模式：用假數據測試 ──
-                    html = MOCK_VERIFY_HTML
-                else:
-                    # ── 真實模式：發送 HTTP 請求 ──
-                    verify_url = f"{base_url}/verify/{match_id}?shooter={num}"
-                    try:
-                        html = await fetch_html(session, verify_url, timeout)
-                    except Exception as e:
-                        print(f"  ✗ #{num}: HTTP error - {e}")
-                        empty_streak += 1
-                        if empty_streak >= streak_limit:
-                            print(f"  [STOP] 連續 {streak_limit} 個錯誤")
-                            break
-                        continue
-
-                data = parse_verify_page(html)
-
-                if data is None:
+        for num in range(1, max_num + 1):
+            if use_mock:
+                html = MOCK_VERIFY_HTML
+            else:
+                verify_url = f"{base_url}/verify/{match_id}?shooter={num}"
+                try:
+                    resp = _session.get(verify_url, timeout=timeout)
+                    print(f"  [{num}] Status: {resp.status_code}, Size: {len(resp.text)}b", end="")
+                    resp.raise_for_status()
+                    html = resp.text
+                except _req.exceptions.HTTPError as e:
+                    http_errors += 1
+                    print(f" ✗ HTTP {resp.status_code}")
                     empty_streak += 1
                     if empty_streak >= streak_limit:
-                        print(f"  [STOP] 連續 {streak_limit} 個空號")
+                        print(f"  [STOP] 連續 {streak_limit} 個 HTTP 錯誤 ({http_errors} total)")
+                        break
+                    continue
+                except Exception as e:
+                    http_errors += 1
+                    print(f" ✗ 錯誤: {e}")
+                    empty_streak += 1
+                    if empty_streak >= streak_limit:
+                        print(f"  [STOP] 連續 {streak_limit} 個錯誤")
                         break
                     continue
 
-                empty_streak = 0
-                save_shooter(conn, match_id, num, data, cursor)
-                total_shooters += 1
-                total_stages += len(data["stages"])
-                print(f"  ✓ #{num}: {data['name']} ({data['division']}) "
-                      f"- {len(data['stages'])} stg")
+            data = parse_verify_page(html)
 
-                if not use_mock:
-                    await asyncio.sleep(delay)
+            if data is None:
+                print(f" ✗ parse 失敗（空號/無效頁面）")
+                empty_streak += 1
+                if empty_streak >= streak_limit:
+                    print(f"  [STOP] 連續 {streak_limit} 個空號")
+                    break
+                continue
 
-            conn.commit()
+            empty_streak = 0
+            save_shooter(conn, match_id, num, data, cursor)
+            total_shooters += 1
+            total_stages += len(data["stages"])
+            print(f" ✓ {data['name']} ({data['division']}, {data['class']}) - {len(data['stages'])} stg")
+
+            if not use_mock:
+                _time.sleep(delay)
+
+        conn.commit()
 
     finally:
         conn.close()
@@ -556,10 +579,13 @@ async def scrape_match(match_id, base_url, cfg, use_mock=False):
     return total_shooters, total_stages
 
 
-async def sync_matches(base_url, cfg):
-    """同步比賽列表到資料庫"""
-    async with aiohttp.ClientSession() if aiohttp else None as session:
-        html = await fetch_html(session, base_url)
+def sync_matches(base_url):
+    """同步比賽列表到資料庫（同步 requests 版本）"""
+    import requests as _req
+    resp = _req.get(base_url, timeout=30, headers={
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    })
+    html = resp.text
     matches = parse_matches(html)
 
     conn = get_db()
@@ -579,8 +605,8 @@ async def sync_matches(base_url, cfg):
     return matches
 
 
-async def main_async():
-    """主入口"""
+def main_sync():
+    """主入口（同步版本）"""
     cfg = load_config()
     base_url = cfg["base_url"]
 
@@ -598,20 +624,18 @@ async def main_async():
     init_tables()
 
     if use_mock:
-        # Mock 模式：用假數據測試完整流程
         print("[MOCK] 使用 Mock 數據測試")
-        await scrape_match(37, base_url, cfg, use_mock=True)
+        scrape_match(37, base_url, cfg, use_mock=True)
         return
 
     if match_id:
-        # 指定比賽
         print(f"[MAIN] 爬取指定比賽 #{match_id}")
-        await scrape_match(match_id, base_url, cfg, use_mock=False)
+        scrape_match(match_id, base_url, cfg, use_mock=False)
         return
 
     # 預設模式：同步比賽列表 → 爬取所有未完賽比賽
     print("[MAIN] 同步比賽列表...")
-    await sync_matches(base_url, cfg)
+    sync_matches(base_url)
 
     conn = get_db()
     c = conn.cursor()
@@ -623,14 +647,14 @@ async def main_async():
 
     for m in active:
         print(f"\n[MAIN] 處理比賽 #{m['id']}: {m['name']}")
-        await scrape_match(m["id"], base_url, cfg, use_mock=False)
+        scrape_match(m["id"], base_url, cfg, use_mock=False)
 
     print("\n[MAIN] 全部完成！")
 
 
 def main():
-    """同步入口（asyncio.run）"""
-    asyncio.run(main_async())
+    """同步入口"""
+    main_sync()
 
 
 if __name__ == "__main__":

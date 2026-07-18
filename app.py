@@ -354,11 +354,11 @@ def trigger_scrape(match_id: int):
         scrape_status["running"] = True
         scrape_status["progress"] = f"開始爬取比賽 #{match_id}..."
 
-        async def run():
+        def run():
             global scrape_status
             cfg = load_config()
             try:
-                shooters, stages = await scrape_match(match_id, cfg["base_url"], cfg)
+                shooters, stages = scrape_match(match_id, cfg["base_url"], cfg)
                 scrape_status["progress"] = f"爬取完成: {shooters} 射手, {stages} stages，開始計算排名..."
                 calculate_all_rankings(match_id)
                 scrape_status["progress"] = f"排名計算完成"
@@ -370,7 +370,7 @@ def trigger_scrape(match_id: int):
                 scrape_status["running"] = False
                 _scrape_lock.release()
 
-        thread = threading.Thread(target=lambda: asyncio.run(run()), daemon=True)
+        thread = threading.Thread(target=run, daemon=True)
         thread.start()
         return {"status": "started", "message": f"開始爬取比賽 #{match_id}"}
     except Exception:
@@ -403,7 +403,7 @@ def _auto_scrape_active_matches():
                     continue
                 scrape_status["running"] = True
                 scrape_status["progress"] = f"[自動] 爬取比賽 #{mid}..."
-                await scrape_match(mid, base_url, cfg)
+                scrape_match(mid, base_url, cfg)
                 calculate_all_rankings(mid)
                 scrape_status["progress"] = f"[自動] 比賽 #{mid} 完成"
                 scrape_status["last_run"] = datetime.now().isoformat()
@@ -426,14 +426,15 @@ def run_scrape():
         _scrape_lock.release()
         return {"status": "running", "message": "爬取進行中，請稍後"}
 
-    async def task():
+    def task():
         global scrape_status
         scrape_status["running"] = True
         scrape_status["progress"] = "同步比賽列表..."
         cfg = load_config()
         base_url = cfg["base_url"]
         try:
-            # 同步比賽列表 — 用 requests fallback
+            # 同步比賽列表
+            matches = parse_matches("")
             import requests as req
             resp = req.get(base_url, timeout=30, headers={
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
@@ -468,7 +469,7 @@ def run_scrape():
                 mid = m_dict["id"]
                 scrape_status["progress"] = f"處理比賽 #{mid} ({m_dict['name']})..."
                 scrape_status["last_run"] = datetime.now().isoformat()
-                await scrape_match(mid, base_url, cfg)
+                scrape_match(mid, base_url, cfg)
                 calculate_all_rankings(mid)
 
             scrape_status["progress"] = f"全部完成"
@@ -479,7 +480,7 @@ def run_scrape():
             scrape_status["running"] = False
             _scrape_lock.release()
 
-    thread = threading.Thread(target=lambda: asyncio.run(task()), daemon=True)
+    thread = threading.Thread(target=task, daemon=True)
     thread.start()
     return {"status": "started", "message": "爬取已開始（異步）"}
 
