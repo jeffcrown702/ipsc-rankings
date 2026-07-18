@@ -337,10 +337,18 @@ def trigger_scrape(match_id: int):
 
         db = get_db()
         cursor = db.cursor()
-        cursor.execute("SELECT id FROM matches WHERE id = ?", (match_id,))
-        if not cursor.fetchone():
+        cursor.execute("SELECT id, is_completed FROM matches WHERE id = ?", (match_id,))
+        row = cursor.fetchone()
+        if not row:
             db.close()
             raise HTTPException(404, "比賽唔存在")
+
+        # 已完賽比賽唔需要重新爬取
+        if row["is_completed"]:
+            db.close()
+            _scrape_lock.release()
+            return {"status": "skipped", "message": f"比賽 #{match_id} 已完賽，唔需要重新爬取"}
+
         db.close()
 
         scrape_status["running"] = True
@@ -371,13 +379,14 @@ def trigger_scrape(match_id: int):
 
 
 def _auto_scrape_active_matches():
-    """自動爬取所有進行中比賽（背景 cron 用）"""
+    """自動爬取所有進行中比賽（背景 cron 用）— 跳過已經完賽嘅"""
     cfg = load_config()
     base_url = cfg["base_url"]
 
     async def run():
         db = get_db()
         c = db.cursor()
+        # 只揀未完賽（is_completed=0）嘅比賽
         c.execute("SELECT id, name FROM matches WHERE is_completed = 0 ORDER BY id DESC")
         active = [dict(r) for r in c.fetchall()]
         db.close()
@@ -445,11 +454,15 @@ def run_scrape():
 
             db = get_db()
             cursor = db.cursor()
+            # 只爬未完賽（is_completed=0）嘅比賽，已完賽唔會更新內容
             cursor.execute("""
                 SELECT id, name FROM matches WHERE is_completed = 0 ORDER BY id DESC
             """)
             active = [dict(r) for r in cursor.fetchall()]
             db.close()
+
+            if not active:
+                scrape_status["progress"] = "冇進行中比賽需要爬取"
 
             for m_dict in active:
                 mid = m_dict["id"]
