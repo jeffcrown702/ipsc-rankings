@@ -1,0 +1,87 @@
+{
+  "_說明": "IPSC 實時排名系統 — 可配置設定檔",
+  "_version": "1.0.0",
+
+  "base_url": "https://hkg.as.ipscess.org/portal",
+
+  "scraper": {
+    "max_competitor": 500,
+    "empty_streak_limit": 5,
+    "request_delay_sec": 0.5,
+    "timeout_sec": 30
+  },
+
+  "match": {
+    "auto_sync_enabled": true,
+    "sync_interval_minutes": 5
+  },
+
+  "divisions": [
+    "Open",
+    "Standard",
+    "Production",
+    "Classic",
+    "Revolver",
+    "Production Optics",
+    "Optics"
+  ],
+
+  "categories": [
+    "Lady",
+    "Junior",
+    "S. Junior",
+    "Senior",
+    "S. Senior",
+    "Grand Junior"
+  ],
+
+  "classes": ["G", "M", "A", "B", "C", "U"],
+
+  "database": {
+    "path": "data/ipsc_rankings.db",
+    "wal_mode": true
+  },
+
+  "api": {
+    "host": "0.0.0.0",
+    "port": 8010,
+    "cors_origins": ["*"]
+  },
+
+  "selector_templates": {
+    "_註解": "此區塊暫存未來要對應的 CSS Selector / XPath，待實際抓取 HTML 後填入",
+
+    "match_list": {
+      "container": "TO_BE_FILLED — e.g. main a[href*='match=']",
+      "match_link": "TO_BE_FILLED — e.g. a[href*='match=']",
+      "match_name": "TO_BE_FILLED — e.g. h5",
+      "match_date": "TO_BE_FILLED",
+      "match_venue": "TO_BE_FILLED",
+      "match_level": "TO_BE_FILLED"
+    },
+
+    "verify_page": {
+      "shooter_name": "TO_BE_FILLED",
+      "division": "TO_BE_FILLED — 從 DIV: ... 文字擷取",
+      "class": "TO_BE_FILLED — 從 CLASSE: ... 文字擷取",
+      "factor": "TO_BE_FILLED — 從 FATOR: ... 文字擷取",
+      "category": "TO_BE_FILLED — 從 CAT: ... 文字擷取",
+
+      "stage_table": {
+        "selector": "TO_BE_FILLED — e.g. table",
+        "columns": {
+          "STG":     "TO_BE_FILLED — index 0",
+          "FACTOR":  "TO_BE_FILLED — index 1 (Hit Factor)",
+          "PTS":     "TO_BE_FILLED — index 2",
+          "A":       "TO_BE_FILLED — index 3",
+          "C":       "TO_BE_FILLED — index 4",
+          "D":       "TO_BE_FILLED — index 5",
+          "MI":      "TO_BE_FILLED — index 6",
+          "NS":      "TO_BE_FILLED — index 7",
+          "PE":      "TO_BE_FILLED — index 8",
+          "TIME":    "TO_BE_FILLED — index 10"
+        }
+      }
+    }
+  }
+}
