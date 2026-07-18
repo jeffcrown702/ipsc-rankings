@@ -389,41 +389,45 @@ def trigger_scrape(match_id: int):
 
 
 def _auto_scrape_active_matches():
-    """自動爬取所有進行中比賽（背景 cron 用）— 跳過已經完賽嘅"""
+    """自動爬取所有進行中比賽（背景 cron 用）— 同步版本，跳過已完賽"""
     cfg = load_config()
     base_url = cfg["base_url"]
 
-    async def run():
-        db = get_db()
-        c = db.cursor()
-        # 只揀未完賽（is_completed=0）嘅比賽
-        c.execute("SELECT id, name FROM matches WHERE is_completed = 0 ORDER BY id DESC")
-        active = [dict(r) for r in c.fetchall()]
-        db.close()
+    db = get_db()
+    c = db.cursor()
+    # 只揀未完賽（is_completed=0）嘅比賽
+    c.execute("SELECT id, name FROM matches WHERE is_completed = 0 ORDER BY id DESC")
+    active = [dict(r) for r in c.fetchall()]
+    db.close()
 
-        for m in active:
-            mid = m["id"]
-            if not _should_auto_scrape(mid, cooldown_sec=120):
-                continue
-            if not _scrape_lock.acquire(blocking=False):
-                continue
-            try:
-                if scrape_status["running"]:
-                    _scrape_lock.release()
-                    continue
-                scrape_status["running"] = True
-                scrape_status["progress"] = f"[自動] 爬取比賽 #{mid}..."
-                scrape_match(mid, base_url, cfg)
-                calculate_all_rankings(mid)
-                scrape_status["progress"] = f"[自動] 比賽 #{mid} 完成"
-                scrape_status["last_run"] = datetime.now().isoformat()
-            except Exception as e:
-                scrape_status["progress"] = f"[自動] 錯誤: {e}"
-            finally:
-                scrape_status["running"] = False
+    if not active:
+        print("[CRON] 冇進行中比賽")
+        return
+
+    for m in active:
+        mid = m["id"]
+        if not _should_auto_scrape(mid, cooldown_sec=120):
+            continue
+        if not _scrape_lock.acquire(blocking=False):
+            continue
+        try:
+            if scrape_status["running"]:
                 _scrape_lock.release()
-
-    asyncio.run(run())
+                continue
+            scrape_status["running"] = True
+            scrape_status["progress"] = f"[自動] 爬取比賽 #{mid} ({m['name'][:30]})..."
+            print(f"[CRON] 開始自動爬取 #{mid}: {m['name'][:40]}")
+            scrape_match(mid, base_url, cfg)
+            calculate_all_rankings(mid)
+            scrape_status["progress"] = f"[自動] 比賽 #{mid} 完成"
+            scrape_status["last_run"] = datetime.now().isoformat()
+            print(f"[CRON] 自動爬取 #{mid} 完成")
+        except Exception as e:
+            scrape_status["progress"] = f"[自動] 錯誤: {e}"
+            print(f"[CRON] 自動爬取 #{mid} 錯誤: {e}")
+        finally:
+            scrape_status["running"] = False
+            _scrape_lock.release()
 
 
 @app.post("/api/scrape/run")
@@ -439,33 +443,17 @@ def run_scrape():
     def task():
         global scrape_status
         scrape_status["running"] = True
-        scrape_status["progress"] = "同步比賽列表..."
+        scrape_status["progress"] = "同步比賽列表 + 檢測 completion..."
         cfg = load_config()
         base_url = cfg["base_url"]
         try:
-            # 同步比賽列表
-            matches = parse_matches("")
-            import requests as req
-            resp = req.get(base_url, timeout=30, headers={
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-            })
-            resp.raise_for_status()
-            html = resp.text
-            matches = parse_matches(html)
-            db = get_db()
-            c = db.cursor()
-            for m in matches:
-                c.execute("INSERT OR IGNORE INTO matches (id, name, date, venue, level, url) VALUES (?,?,?,?,?,?)",
-                          (m["id"], m["name"], m["date"], m["venue"], m["level"], m["url"]))
-                c.execute("UPDATE matches SET name=?, date=?, venue=?, level=?, url=? WHERE id=?",
-                          (m["name"], m["date"], m["venue"], m["level"], m["url"], m["id"]))
-            db.commit()
-            db.close()
-            scrape_status["progress"] = f"同步 {len(matches)} 場比賽"
+            # 同步比賽列表（含 completion detection）
+            matches = scraper_sync_matches(base_url)
+            scrape_status["progress"] = f"同步 {len(matches)} 場比賽（含 completion 檢測）"
 
             db = get_db()
             cursor = db.cursor()
-            # 只爬未完賽（is_completed=0）嘅比賽，已完賽唔會更新內容
+            # 只爬未完賽（is_completed=0）嘅比賽
             cursor.execute("""
                 SELECT id, name FROM matches WHERE is_completed = 0 ORDER BY id DESC
             """)
@@ -474,6 +462,8 @@ def run_scrape():
 
             if not active:
                 scrape_status["progress"] = "冇進行中比賽需要爬取"
+            else:
+                scrape_status["progress"] = f"有 {len(active)} 場進行中比賽"
 
             for m_dict in active:
                 mid = m_dict["id"]

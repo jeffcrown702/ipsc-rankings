@@ -124,16 +124,13 @@ def parse_matches(html):
         name = h5.get_text(strip=True) if h5 else ""
 
         # 取出日期/場地/級別
-        # 真實 HTML 有換行；但用 get_text(" ") flat 亦可
         full_text = a_tag.get_text(" ", strip=True)
-        # 移除 h5 文字（已用 name 取）
         if name:
             full_text = full_text.replace(name, "", 1).strip()
         parts = [p.strip() for p in full_text.split() if p.strip()]
         date = ""
         venue = ""
         level = ""
-        # 第一個 token 通常係日期（dd/mm/yyyy）
         if parts:
             date_match = re.search(r"\d{2}/\d{2}/\d{4}", parts[0])
             if date_match:
@@ -154,6 +151,43 @@ def parse_matches(html):
         })
 
     return matches
+
+
+def check_match_completion(match_id, base_url):
+    """
+    檢查比賽是否已完成。
+
+    檢測邏輯：fetch match page，判斷頁面標題：
+      - <h5 class="card-title">Results</h5>  → 已完成 (is_completed=1)
+      - <h5 class="card-title">Verify</h5>    → 進行中 (is_completed=0)
+
+    回傳: bool — True 表示已完成
+    """
+    import requests as _req
+    try:
+        url = f"{base_url}?match={match_id}"
+        resp = _req.get(url, timeout=15, headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        })
+        resp.raise_for_status()
+        html = resp.text
+
+        if "Results</h5>" in html or 'card-title">Results' in html:
+            return True
+        if "Verify</h5>" in html or 'card-title">Verify' in html:
+            return False
+
+        # Fallback: check for results links vs verify form
+        if "/portal/results/" in html:
+            return True
+        if "/portal/verify/" in html:
+            return False
+
+        # Unknown — default to incomplete (safer for scraping)
+        return False
+    except Exception as e:
+        print(f"  [WARN] check_match_completion(#{match_id}): {e}")
+        return None  # Unknown — don't update
 
 
 # ═══════════════════════════════════════════════════
@@ -580,7 +614,7 @@ def scrape_match(match_id, base_url, cfg, use_mock=False):
 
 
 def sync_matches(base_url):
-    """同步比賽列表到資料庫（同步 requests 版本）"""
+    """同步比賽列表到資料庫（同步 requests 版本），自動檢測 completion 狀態"""
     import requests as _req
     resp = _req.get(base_url, timeout=30, headers={
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
@@ -599,9 +633,27 @@ def sync_matches(base_url):
             UPDATE matches SET name=?, date=?, venue=?, level=?, url=?
             WHERE id=?
         """, (m["name"], m["date"], m["venue"], m["level"], m["url"], m["id"]))
+
+    conn.commit()
+
+    # 檢測每場比賽 completion 狀態
+    print(f"[SYNC] 檢測 {len(matches)} 場比賽 completion 狀態...")
+    updated = 0
+    for m in matches:
+        mid = m["id"]
+        is_done = check_match_completion(mid, base_url)
+        if is_done is not None:
+            new_val = 1 if is_done else 0
+            c.execute("UPDATE matches SET is_completed = ? WHERE id = ? AND is_completed != ?",
+                      (new_val, mid, new_val))
+            if c.rowcount > 0:
+                status = "已完成" if is_done else "進行中"
+                print(f"  #{mid} → {status}")
+                updated += 1
+
     conn.commit()
     conn.close()
-    print(f"[SYNC] 同步 {len(matches)} 場比賽")
+    print(f"[SYNC] 同步 {len(matches)} 場比賽, 更新 {updated} 個 completion 狀態")
     return matches
 
 
