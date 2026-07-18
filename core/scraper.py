@@ -248,6 +248,38 @@ MOCK_VERIFY_HTML = """<!DOCTYPE html>
 """
 
 
+def sanitize_name(name):
+    """
+    清洗選手姓名，移除 Excel 錯誤字串（#REF!, #VALUE!, #N/A 等）。
+
+    若清洗後為空白 → 回傳 "[Unknown]"
+    """
+    if not name:
+        return "[Unknown]"
+
+    # Excel 錯誤 pattern 列表
+    excel_errors = [
+        r'#REF!', r'#VALUE!', r'#N/A', r'#NAME\?',
+        r'#DIV/0!', r'#NULL!', r'#NUM!',
+        r'#REF\b', r'#VALUE\b', r'#N/A\b',
+    ]
+
+    cleaned = name
+    for pattern in excel_errors:
+        cleaned = re.sub(pattern, '', cleaned)
+
+    # 清理多餘空格同標點
+    cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+    cleaned = re.sub(r',\s*$', '', cleaned)  # trailing comma
+    cleaned = re.sub(r'^\s*,', '', cleaned)  # leading comma
+    cleaned = cleaned.strip()
+
+    if not cleaned or len(cleaned) < 2:
+        return "[Unknown]"
+
+    return cleaned
+
+
 def parse_verify_page_mock():
     """
     使用 MOCK_VERIFY_HTML 測試解析邏輯。
@@ -299,8 +331,9 @@ def parse_verify_page(html):
     fac_match   = re.search(r"FATOR:\s*(\S+)", info_text)
     cat_match   = re.search(r"CAT:\s*(\S+(?:\s+\S+)?)", info_text)
 
-    # 3. 選手姓名（去除前導編號）
+    # 3. 選手姓名（去除前導編號 + 清洗 Excel 錯誤）
     name = re.sub(r"^\d+\s+", "", name_elem.strip())
+    name = sanitize_name(name)
 
     shooter = {
         "name": name.strip(),
