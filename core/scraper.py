@@ -578,8 +578,27 @@ def scrape_match(match_id, base_url, cfg, use_mock=False):
     conn = get_db()
     cursor = conn.cursor()
 
+    # Skip 已經有 stage data 嘅 shooter number
+    cursor = get_db().cursor()
+    cursor.execute("""
+        SELECT DISTINCT s.competitor_number FROM shooters s
+        JOIN stage_scores ss ON ss.shooter_id = s.id
+        WHERE s.match_id = ? AND ss.match_id = ? AND ss.hit_factor > 0
+    """, (match_id, match_id))
+    existing = {r[0] for r in cursor.fetchall()}
+    cursor.close()
+    skipped = 0
+    if existing:
+        print(f"  [SKIP] 已有 {len(existing)} 位射手有 stage data，跳過")
+
     try:
         for num in range(1, max_num + 1):
+            if num in existing:
+                skipped += 1
+                if skipped % 20 == 0:
+                    print(f"  [{num}] 跳過 (已有數據)")
+                continue
+            skipped = 0
             if use_mock:
                 html = MOCK_VERIFY_HTML
             else:
