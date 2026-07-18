@@ -579,7 +579,6 @@ def scrape_match(match_id, base_url, cfg, use_mock=False):
     cursor = conn.cursor()
 
     # Skip 已經有 stage data 嘅 shooter number
-    cursor = get_db().cursor()
     cursor.execute("""
         SELECT DISTINCT s.competitor_number FROM shooters s
         JOIN stage_scores ss ON ss.shooter_id = s.id
