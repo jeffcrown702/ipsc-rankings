@@ -27,10 +27,20 @@ if not _IS_VERCEL:
     import asyncio, aiohttp, threading
 
 sys.path.insert(0, os.path.dirname(__file__))
-from core.database import get_db, init_db
+from core.database import get_db, init_db as _init_db
 from core.scraper import load_config, scrape_match, sync_matches as scraper_sync_matches, parse_matches, fetch_html, scrape_results_match
 from core.scoring_engine import calculate_all_rankings, calculate_division_rankings
 from core.config import API_HOST, API_PORT, DIVISIONS
+
+# Vercel-safe init
+try:
+    _init_db()
+except Exception as _db_err:
+    print(f"[DB] init_db error: {_db_err}")
+    # Will lazy-init on first request
+    _init_db_called = False
+else:
+    _init_db_called = True
 
 app = FastAPI(title="IPSC 實時排名系統", version="1.0.0")
 
