@@ -10,5 +10,11 @@
       "src": "/(.*)",
       "dest": "wsgi.py"
     }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron/keepwarm",
+      "schedule": "*/4 * * * *"
+    }
   ]
 }

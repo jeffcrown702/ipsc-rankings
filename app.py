@@ -108,6 +108,19 @@ def server_error(e):
 
 # ===================== API Routes =====================
 
+@app.route('/api/cron/keepwarm')
+def cron_keepwarm():
+    """Keep Neon warm — Vercel cron every 4 min"""
+    try:
+        db = get_db()
+        c = get_cursor(db)
+        c.execute("SELECT 1")
+        db.close()
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @app.route("/api/matches")
 def get_matches():
     """獲取比賽列表"""
