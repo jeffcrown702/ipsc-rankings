@@ -54,9 +54,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 爬取狀態 + 線程鎖
+# 爬取狀態 + 線程鎖（Vercel 用 dummy lock）
 scrape_status = {"running": False, "last_run": None, "progress": ""}
-_scrape_lock = threading.Lock()
+if _IS_VERCEL:
+    class _DummyLock:
+        def acquire(self, blocking=True): return True
+        def release(self): pass
+        def locked(self): return False
+    _scrape_lock = _DummyLock()
+else:
+    _scrape_lock = threading.Lock()
 _last_auto_scrape = {}
 
 
