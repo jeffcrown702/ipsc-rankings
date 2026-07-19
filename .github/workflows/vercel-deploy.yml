@@ -1,0 +1,16 @@
+name: Deploy to Vercel
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy to Vercel
+        run: curl -s -X POST "https://api.vercel.com/v1/integrations/deploy/prj_xxx/QmXxx..." 2>&1 || true
+      - name: Ping after deploy
+        run: sleep 30 && curl -s --max-time 15 "https://ipsc-rankings.vercel.app/api/debug/version"
