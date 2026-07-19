@@ -1,22 +1,17 @@
 """IPSC 排名系統 - 數據庫模型（雙模式：SQLite / PostgreSQL）"""
 import os
 
-# 自動檢測模式：Vercel 環境用 PostgreSQL，否則用 SQLite
-USE_POSTGRES = any((
-    os.environ.get("VERCEL") == "1",
-    os.environ.get("DATABASE_URL") is not None,
-    os.environ.get("NEON_DATABASE_URL") is not None,
-    os.environ.get("POSTGRES_URL") is not None,
-    os.environ.get("POSTGRES_PRISMA_URL") is not None,
-))
+# 自動檢測模式：Vercel 環境用 PostgreSQL（需有 DATABASE_URL），否則用 SQLite
+_IS_VERCEL = os.environ.get("VERCEL") == "1"
+_DATABASE_URL = (os.environ.get("DATABASE_URL") or
+                 os.environ.get("NEON_DATABASE_URL") or
+                 os.environ.get("POSTGRES_URL") or
+                 os.environ.get("POSTGRES_PRISMA_URL") or
+                 "")
+USE_POSTGRES = _IS_VERCEL and _DATABASE_URL != "" or os.environ.get("DATABASE_URL") is not None
+DATABASE_URL = _DATABASE_URL  # always available, may be empty for SQLite
 
-if USE_POSTGRES:
-    DATABASE_URL = (os.environ.get("DATABASE_URL") or
-                    os.environ.get("NEON_DATABASE_URL") or
-                    os.environ.get("POSTGRES_URL") or
-                    os.environ.get("POSTGRES_PRISMA_URL") or
-                    "")
-else:
+if not USE_POSTGRES:
     import sqlite3
     from core.config import DB_PATH
 
