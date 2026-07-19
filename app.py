@@ -1,30 +1,35 @@
-"""IPSC 實時排名系統 - FastAPI 後端
+"""IPSC 實時排名系統 - Flask 後端 (Vercel 相容)
 
 API Endpoints:
-  GET  /api/matches           — 比賽列表
-  GET  /api/matches/{id}      — 比賽詳情
-  GET  /api/matches/{id}/scrape — 觸發爬取
+  GET  /api/matches              — 比賽列表
+  GET  /api/matches/{id}         — 比賽詳情
+  GET  /api/matches/{id}/scrape  — 觸發爬取
   GET  /api/matches/{id}/rankings — 四大排名數據
   GET  /api/matches/{id}/shooters — 射手列表
-  GET  /api/scrape/status     — 爬取狀態
-  POST /api/scrape/run        — 手動執行爬取
+  GET  /api/matches/{id}/stages   — 舞台列表
+  GET  /api/scrape/status        — 爬取狀態
+  POST /api/scrape/run           — 手動執行爬取
+  GET  /api/cron/scrape          — Vercel cron job
+  GET  /                         — 主頁
+  GET  /match/{id}               — 比賽頁
+  GET  /api/import               — import info
+  POST /api/import               — import data
 """
 import json
-import threading
 from datetime import datetime
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
-from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
-import os, sys, time
-from datetime import datetime, timedelta
-from contextlib import contextmanager
+from flask import Flask, jsonify, request, render_template, send_from_directory
+from flask_cors import CORS
+import os
+import sys
+import time
+import traceback
 
-# Vercel 環境唔用 asyncio/aiohttp/threading
+# Vercel 環境：唔 import threading/asyncio/aiohttp
 _IS_VERCEL = os.environ.get("VERCEL") == "1"
 if not _IS_VERCEL:
-    import asyncio, aiohttp, threading
+    import threading
+    import asyncio
+    import aiohttp
 
 sys.path.insert(0, os.path.dirname(__file__))
 from core.database import get_db, init_db as _init_db
@@ -33,29 +38,29 @@ from core.scoring_engine import calculate_all_rankings, calculate_division_ranki
 from core.config import API_HOST, API_PORT, DIVISIONS
 import core.config as cfg
 
-# Vercel-safe init
-try:
-    _init_db()
-except Exception as _db_err:
-    print(f"[DB] init_db error: {_db_err}")
-    # Will lazy-init on first request
-    _init_db_called = False
-else:
-    _init_db_called = True
+# ===================== Flask App Init =====================
+app = Flask(__name__, template_folder="templates", static_folder="static")
 
-app = FastAPI(title="IPSC 實時排名系統", version="1.0.0")
+# CORS - open to all origins
+CORS(app, resources={r"/api/*": {"origins": "*"}})
 
-# CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# ===================== DB Init =====================
+_db_initialized = False
 
-# 爬取狀態 + 線程鎖（Vercel 用 dummy lock）
+def ensure_db():
+    """Lazy init DB on first request (Vercel-safe)"""
+    global _db_initialized
+    if not _db_initialized:
+        try:
+            _init_db()
+            _db_initialized = True
+        except Exception as e:
+            print(f"[DB] init_db error: {e}")
+
+
+# ===================== Scrape Status + Lock =====================
 scrape_status = {"running": False, "last_run": None, "progress": ""}
+
 if _IS_VERCEL:
     class _DummyLock:
         def acquire(self, blocking=True): return True
@@ -64,7 +69,9 @@ if _IS_VERCEL:
     _scrape_lock = _DummyLock()
 else:
     _scrape_lock = threading.Lock()
+
 _last_auto_scrape = {}
+_BATCH_SIZE = 5  # 每次爬取 shooter 數量
 
 
 def _should_auto_scrape(match_id, cooldown_sec=120):
@@ -77,29 +84,27 @@ def _should_auto_scrape(match_id, cooldown_sec=120):
     return False
 
 
-@app.on_event("startup")
-def startup():
-    _init_db()
-    if not _IS_VERCEL:
-        # 定時任務：每 5 分鐘自動爬取進行中比賽
-        def cron_loop():
-            while True:
-                time.sleep(300)  # 5 分鐘
-                try:
-                    _auto_scrape_active_matches()
-                except Exception as e:
-                    print(f"[CRON] 自動爬取出錯: {e}")
+# ===================== Error Handlers =====================
 
-        t = threading.Thread(target=cron_loop, daemon=True)
-        t.start()
-        print("[CRON] 自動爬取已啟動（每 5 分鐘）")
+@app.errorhandler(404)
+def not_found(e):
+    return jsonify({"error": "Not found"}), 404
+
+@app.errorhandler(400)
+def bad_request(e):
+    return jsonify({"error": str(e)}), 400
+
+@app.errorhandler(500)
+def server_error(e):
+    return jsonify({"error": str(e)}), 500
 
 
 # ===================== API Routes =====================
 
-@app.get("/api/matches")
+@app.route("/api/matches")
 def get_matches():
     """獲取比賽列表"""
+    ensure_db()
     db = get_db()
     cursor = db.cursor()
     cursor.execute("""
@@ -119,67 +124,22 @@ def get_matches():
         m["shooter_count"] = row["cnt"] if row else 0
         db2.close()
 
-    return {"matches": matches}
+    return jsonify({"matches": matches})
 
 
-@app.get("/api/matches/{match_id}")
-def get_match(match_id: int):
-    """獲取單場比賽詳情（含 divisions）"""
+@app.route("/api/matches/<int:match_id>")
+def get_match(match_id):
+    """獲取比賽詳情（含 divisions）"""
+    ensure_db()
     db = get_db()
     cursor = db.cursor()
     cursor.execute("SELECT id, name, date, venue, level, is_completed FROM matches WHERE id = ?", (match_id,))
     row = cursor.fetchone()
     if not row:
         db.close()
-        raise HTTPException(404, "比賽不存在")
-    
+        return jsonify({"error": "比賽不存在"}), 404
+
     match_data = dict(row)
-    
-    # Get unique divisions for this match
-    cursor.execute("SELECT DISTINCT division FROM shooters WHERE match_id = ? AND division != '' ORDER BY division", (match_id,))
-    match_data["divisions"] = [r[0] for r in cursor.fetchall()]
-    
-    db.close()
-    return {"match": match_data}
-
-
-@app.post("/api/import")
-def import_data(data: dict):
-    """Import data from local SQLite export"""
-    db = get_db()
-    cur = db.cursor()
-    counts = {}
-    
-    for table in ['matches', 'shooters', 'stage_scores', 'rankings']:
-        rows = data.get(table, [])
-        if not rows:
-            continue
-        # Get columns from first row
-        cols = list(rows[0].keys())
-        placeholders = ','.join(['?' if not USE_POSTGRES else '%s'] * len(cols))
-        col_names = ','.join(cols)
-        
-        for row in rows:
-            values = [row.get(c) for c in cols]
-            try:
-                cur.execute(f"INSERT INTO {table} ({col_names}) VALUES ({placeholders})", values)
-            except Exception as e:
-                print(f"[IMPORT] {table} skip: {e}")
-        
-        db.commit()
-        counts[table] = len(rows)
-    
-    return counts
-def get_match(match_id: int):
-    """獲取比賽詳情"""
-    db = get_db()
-    cursor = db.cursor()
-    cursor.execute("SELECT * FROM matches WHERE id = ?", (match_id,))
-    match = cursor.fetchone()
-    if not match:
-        db.close()
-        raise HTTPException(404, "比賽唔存在")
-    match_data = dict(match)
 
     # 取得有數據嘅 Division（跟 config 順序）
     cursor.execute("""
@@ -203,12 +163,14 @@ def get_match(match_id: int):
     match_data["last_calculated"] = row["last_calc"] if row else None
 
     db.close()
-    return {"match": match_data}
+    return jsonify({"match": match_data})
 
 
-@app.get("/api/matches/{match_id}/shooters")
-def get_shooters(match_id: int, division: str = None):
+@app.route("/api/matches/<int:match_id>/shooters")
+def get_shooters(match_id):
     """獲取射手列表"""
+    ensure_db()
+    division = request.args.get("division")
     db = get_db()
     cursor = db.cursor()
     if division:
@@ -229,17 +191,26 @@ def get_shooters(match_id: int, division: str = None):
         """, (match_id,))
     shooters = [dict(row) for row in cursor.fetchall()]
     db.close()
-    return {"shooters": shooters}
+    return jsonify({"shooters": shooters})
 
 
-@app.get("/api/matches/{match_id}/rankings")
-def get_rankings(match_id: int, division: str, rank_type: str = "overall",
-                 group_key: str = None):
+@app.route("/api/matches/<int:match_id>/rankings")
+def get_rankings(match_id):
     """獲取排名數據
 
-    rank_type: overall, category, class, stage
-    group_key: 可選，指定 subgroup（category 名稱、class 名稱、stage 名稱）
+    Query params:
+      rank_type: overall, category, class, stage
+      division:  Open, Standard, etc.
+      group_key: 可選，指定 subgroup
     """
+    ensure_db()
+    division = request.args.get("division", "")
+    rank_type = request.args.get("rank_type", "overall")
+    group_key = request.args.get("group_key")
+
+    if not division:
+        return jsonify({"error": "division parameter is required"}), 400
+
     db = get_db()
     cursor = db.cursor()
 
@@ -255,7 +226,7 @@ def get_rankings(match_id: int, division: str, rank_type: str = "overall",
         """, (match_id, division))
         rows = [dict(r) for r in cursor.fetchall()]
         db.close()
-        return {"rank_type": "overall", "division": division, "rankings": rows}
+        return jsonify({"rank_type": "overall", "division": division, "rankings": rows})
 
     elif rank_type == "category":
         if group_key:
@@ -271,10 +242,9 @@ def get_rankings(match_id: int, division: str, rank_type: str = "overall",
             """, (match_id, division, group_key))
             rows = [dict(r) for r in cursor.fetchall()]
             db.close()
-            return {"rank_type": "category", "division": division,
-                    "group_key": group_key, "rankings": rows}
+            return jsonify({"rank_type": "category", "division": division,
+                            "group_key": group_key, "rankings": rows})
         else:
-            # 返回所有 category 分組
             cursor.execute("""
                 SELECT DISTINCT r.group_key
                 FROM rankings r
@@ -298,8 +268,8 @@ def get_rankings(match_id: int, division: str, rank_type: str = "overall",
                 result[g] = [dict(r) for r in cursor.fetchall()]
 
             db.close()
-            return {"rank_type": "category", "division": division,
-                    "groups": list(result.keys()), "rankings": result}
+            return jsonify({"rank_type": "category", "division": division,
+                            "groups": list(result.keys()), "rankings": result})
 
     elif rank_type == "class":
         if group_key:
@@ -315,8 +285,8 @@ def get_rankings(match_id: int, division: str, rank_type: str = "overall",
             """, (match_id, division, group_key))
             rows = [dict(r) for r in cursor.fetchall()]
             db.close()
-            return {"rank_type": "class", "division": division,
-                    "group_key": group_key, "rankings": rows}
+            return jsonify({"rank_type": "class", "division": division,
+                            "group_key": group_key, "rankings": rows})
         else:
             cursor.execute("""
                 SELECT DISTINCT r.group_key
@@ -339,8 +309,8 @@ def get_rankings(match_id: int, division: str, rank_type: str = "overall",
                 """, (match_id, division, g))
                 result[g] = [dict(r) for r in cursor.fetchall()]
             db.close()
-            return {"rank_type": "class", "division": division,
-                    "groups": list(result.keys()), "rankings": result}
+            return jsonify({"rank_type": "class", "division": division,
+                            "groups": list(result.keys()), "rankings": result})
 
     elif rank_type == "stage":
         if group_key:
@@ -367,10 +337,9 @@ def get_rankings(match_id: int, division: str, rank_type: str = "overall",
             """, (match_id, division, group_key))
             rows = [dict(r) for r in cursor.fetchall()]
             db.close()
-            return {"rank_type": "stage", "division": division,
-                    "group_key": group_key, "rankings": rows}
+            return jsonify({"rank_type": "stage", "division": division,
+                            "group_key": group_key, "rankings": rows})
         else:
-            # 列出所有 Stage
             cursor.execute("""
                 SELECT DISTINCT r.group_key
                 FROM rankings r
@@ -379,16 +348,17 @@ def get_rankings(match_id: int, division: str, rank_type: str = "overall",
             """, (match_id, division))
             stages = [r["group_key"] for r in cursor.fetchall()]
             db.close()
-            return {"rank_type": "stage", "division": division,
-                    "stages": stages}
+            return jsonify({"rank_type": "stage", "division": division,
+                            "stages": stages})
 
     db.close()
-    raise HTTPException(400, f"唔支援嘅 rank_type: {rank_type}")
+    return jsonify({"error": f"唔支援嘅 rank_type: {rank_type}"}), 400
 
 
-@app.get("/api/matches/{match_id}/stages")
-def get_stages(match_id: int):
+@app.route("/api/matches/<int:match_id>/stages")
+def get_stages(match_id):
     """獲取比賽的所有 Stage 名稱"""
+    ensure_db()
     db = get_db()
     cursor = db.cursor()
     cursor.execute("""
@@ -399,20 +369,21 @@ def get_stages(match_id: int):
     """, (match_id,))
     stages = [dict(r) for r in cursor.fetchall()]
     db.close()
-    return {"stages": stages}
+    return jsonify({"stages": stages})
 
 
-@app.get("/api/matches/{match_id}/scrape")
-def trigger_scrape(match_id: int):
-    """觸發爬取與計算（異步，線程安全）"""
+@app.route("/api/matches/<int:match_id>/scrape")
+def trigger_scrape(match_id):
+    """觸發爬取與計算（線程安全）"""
     global scrape_status
+    ensure_db()
 
     if not _scrape_lock.acquire(blocking=False):
-        return {"status": "busy", "message": "爬取系統繁忙，請稍後再試"}
+        return jsonify({"status": "busy", "message": "爬取系統繁忙，請稍後再試"})
 
     try:
         if scrape_status["running"]:
-            return {"status": "running", "message": "爬取進行中，請稍後"}
+            return jsonify({"status": "running", "message": "爬取進行中，請稍後"})
 
         db = get_db()
         cursor = db.cursor()
@@ -420,13 +391,12 @@ def trigger_scrape(match_id: int):
         row = cursor.fetchone()
         if not row:
             db.close()
-            raise HTTPException(404, "比賽唔存在")
+            return jsonify({"error": "比賽唔存在"}), 404
 
-        # 已完賽比賽唔需要重新爬取
         if row["is_completed"]:
             db.close()
             _scrape_lock.release()
-            return {"status": "skipped", "message": f"比賽 #{match_id} 已完賽，唔需要重新爬取"}
+            return jsonify({"status": "skipped", "message": f"比賽 #{match_id} 已完賽，唔需要重新爬取"})
 
         db.close()
 
@@ -444,29 +414,29 @@ def trigger_scrape(match_id: int):
                 scrape_status["last_run"] = datetime.now().isoformat()
             except Exception as e:
                 scrape_status["progress"] = f"錯誤: {str(e)}"
-                import traceback; traceback.print_exc()
+                traceback.print_exc()
             finally:
                 scrape_status["running"] = False
                 _scrape_lock.release()
 
-        thread = threading.Thread(target=run, daemon=True)
-        thread.start()
-        return {"status": "started", "message": f"開始爬取比賽 #{match_id}"}
+        t = threading.Thread(target=run, daemon=True)
+        t.start()
+        return jsonify({"status": "started", "message": f"開始爬取比賽 #{match_id}"})
+
     except Exception:
         _scrape_lock.release()
         raise
 
 
 def _auto_scrape_active_matches():
+    """自動爬取所有進行中比賽（背景 cron 用）"""
     if _IS_VERCEL:
         return
-    """自動爬取所有進行中比賽（背景 cron 用）— 同步版本，跳過已完賽"""
     cfg = load_config()
     base_url = cfg["base_url"]
 
     db = get_db()
     c = db.cursor()
-    # 只揀未完賽（is_completed=0）嘅比賽
     c.execute("SELECT id, name FROM matches WHERE is_completed = 0 ORDER BY id DESC")
     active = [dict(r) for r in c.fetchall()]
     db.close()
@@ -501,44 +471,42 @@ def _auto_scrape_active_matches():
             _scrape_lock.release()
 
 
-@app.post("/api/scrape/run")
+@app.route("/api/scrape/run", methods=["POST"])
 def run_scrape():
-    """Vercel: 同步爬 3 個 shooter（保證 10 秒內完成）"""
+    """Vercel: 同步爬 _BATCH_SIZE 個 shooter（保證 10 秒內完成）"""
     global scrape_status
-    scrape_status = {"running": False, "progress": "", "last_run": None}
-    if scrape_status["running"]:
-        return {"status": "running"}
-    
+    ensure_db()
+
     scrape_status["running"] = True
     scrape_status["progress"] = "直接爬比賽 #37..."
     base_url = cfg.BASE_URL
-    
+
     try:
-        _scrape_batch(37, base_url, {}, 3)
+        _scrape_batch(37, base_url, {}, _BATCH_SIZE)
         scrape_status["progress"] = "爬取完成，計算排名..."
         calculate_all_rankings(37)
         scrape_status["progress"] = "全部完成"
     except Exception as e:
         scrape_status["progress"] = f"錯誤: {e}"
-        import traceback; traceback.print_exc()
+        traceback.print_exc()
     finally:
         scrape_status["running"] = False
-    
-    return {"status": "completed", "message": scrape_status["progress"]}
+
+    return jsonify({"status": "completed", "message": scrape_status["progress"]})
 
 
-def _scrape_batch(match_id: int, base_url: str, cfg: dict, batch_size: int = 5):
+def _scrape_batch(match_id, base_url, cfg_dict, batch_size=5):
     """只爬少量 shooter，適合 Vercel 10 秒限制"""
     from core.scraper import parse_verify_page
     import requests as _req
-    
+
     db = get_db()
     cursor = db.cursor()
-    
+
     # 找未爬的 shooter
     cursor.execute("""
         SELECT s.competitor_number FROM shooters s
-        WHERE s.match_id = ? 
+        WHERE s.match_id = ?
         AND (
             SELECT COUNT(*) FROM stage_scores ss WHERE ss.shooter_id = s.id
         ) = 0
@@ -547,15 +515,14 @@ def _scrape_batch(match_id: int, base_url: str, cfg: dict, batch_size: int = 5):
     """, (match_id, batch_size))
     to_scrape = [r[0] for r in cursor.fetchall()]
     cursor.close()
-    
+
     if not to_scrape:
-        # 全部已爬或冇 shooter record，從 1 開始新增
         cursor = db.cursor()
         cursor.execute("SELECT MAX(competitor_number) FROM shooters WHERE match_id = ?", (match_id,))
         max_num = cursor.fetchone()[0] or 0
         cursor.close()
         to_scrape = list(range(max_num + 1, min(max_num + 1 + batch_size, 220)))
-    
+
     scraped = 0
     for comp_num in to_scrape:
         verify_url = f"{base_url}/portal/verify_competitor.php?comp_num={comp_num}"
@@ -569,23 +536,23 @@ def _scrape_batch(match_id: int, base_url: str, cfg: dict, batch_size: int = 5):
             if result and result["name"] != "Unknown":
                 _save_shooter_data(match_id, result)
                 scraped += 1
-    
+
     db.close()
     return scraped
 
 
-def _save_shooter_data(match_id: int, data: dict):
+def _save_shooter_data(match_id, data):
     """儲存單一射手數據到 DB"""
     from core.database import get_db, get_cursor
-    
+
     db = get_db()
-    cursor = db.cursor() if not hasattr(get_db, '__wrapped__') else db.cursor()
-    
+    cursor = db.cursor()
+
     # 檢查是否存在
-    cursor.execute("SELECT id FROM shooters WHERE match_id = ? AND competitor_number = ?", 
+    cursor.execute("SELECT id FROM shooters WHERE match_id = ? AND competitor_number = ?",
                    (match_id, data["competitor_number"]))
     existing = cursor.fetchone()
-    
+
     if existing:
         shooter_id = existing[0]
     else:
@@ -596,10 +563,10 @@ def _save_shooter_data(match_id: int, data: dict):
               data.get("category", ""), data.get("class", ""), data.get("factor", ""), data.get("region", "")))
         db.commit()
         shooter_id = cursor.lastrowid
-    
+
     # 清空舊 stage scores
     cursor.execute("DELETE FROM stage_scores WHERE shooter_id = ?", (shooter_id,))
-    
+
     # 插入新 stage scores
     for stg in data.get("stages", []):
         cursor.execute("""
@@ -609,11 +576,12 @@ def _save_shooter_data(match_id: int, data: dict):
               stg.get("a", 0), stg.get("c", 0), stg.get("d", 0),
               stg.get("mi", 0), stg.get("ns", 0), stg.get("pe", 0),
               stg.get("time", 0), stg.get("hit_factor", 0)))
-    
+
     db.commit()
     cursor.close()
 
-@app.get("/api/scrape/status")
+
+@app.route("/api/scrape/status")
 def get_scrape_status():
     """獲取爬取狀態（Vercel 友好版）"""
     s = dict(scrape_status)
@@ -625,22 +593,25 @@ def get_scrape_status():
         _scrape_lock.release()
     s["cooldown_sec"] = 120
     s["running"] = s.get("running", False) or _scrape_lock.locked()
-    return s
+    return jsonify(s)
 
 
-@app.get("/api/matches/{match_id}/recalculate")
-def recalculate(match_id: int):
+@app.route("/api/matches/<int:match_id>/recalculate")
+def recalculate(match_id):
     """重新計算排名（唔爬取，只用已有數據）"""
+    ensure_db()
     try:
         calculate_all_rankings(match_id)
-        return {"status": "success", "message": f"比賽 #{match_id} 排名已重新計算"}
+        return jsonify({"status": "success", "message": f"比賽 #{match_id} 排名已重新計算"})
     except Exception as e:
-        raise HTTPException(500, str(e))
+        return jsonify({"error": str(e)}), 500
 
 
-@app.get("/api/scrape/log")
-def get_scrape_log(limit: int = 20):
+@app.route("/api/scrape/log")
+def get_scrape_log():
     """獲取爬取日誌"""
+    ensure_db()
+    limit = request.args.get("limit", 20, type=int)
     db = get_db()
     cursor = db.cursor()
     cursor.execute("""
@@ -651,66 +622,80 @@ def get_scrape_log(limit: int = 20):
     """, (limit,))
     logs = [dict(r) for r in cursor.fetchall()]
     db.close()
-    return {"logs": logs}
+    return jsonify({"logs": logs})
 
 
-# ===================== Frontend =====================
+# ===================== Frontend Pages =====================
 
-@app.get("/", response_class=HTMLResponse)
+@app.route("/")
 def index():
-    with open("templates/index.html", "r", encoding="utf-8") as f:
-        return f.read()
+    """主頁"""
+    ensure_db()
+    return render_template("index.html")
 
 
-@app.get("/match/{match_id}", response_class=HTMLResponse)
-def match_page(match_id: int):
-    with open("templates/match.html", "r", encoding="utf-8") as f:
-        html = f.read()
-    return html.replace("{{MATCH_ID}}", str(match_id))
+@app.route("/match/<int:match_id>")
+def match_page(match_id):
+    """比賽頁"""
+    ensure_db()
+    return render_template("match.html", MATCH_ID=match_id)
 
 
+# ===================== Vercel Cron =====================
 
-@app.get("/api/cron/scrape")
+@app.route("/api/cron/scrape")
 def cron_scrape():
     """Vercel cron job: 自動爬取 active matches"""
     if not _IS_VERCEL:
-        return {"error": "only for Vercel"}
+        return jsonify({"error": "only for Vercel"})
+
+    ensure_db()
     from core.scraper import fetch_html, sync_matches, parse_matches, scrape_match
     from core.scoring_engine import calculate_all_rankings
-    html = fetch_html(BASE_URL)
+
+    html = fetch_html(cfg.BASE_URL)
     if html:
-        sync_matches(html); parse_matches(html)
+        sync_matches(html)
+        parse_matches(html)
+
     db = get_db()
     cursor = db.cursor()
     cursor.execute("SELECT id FROM matches WHERE is_completed = 0")
     mids = [r[0] for r in cursor.fetchall()]
     cursor.close()
+
     for mid in mids:
         try:
-            _scrape_batch(mid, BASE_URL, {}, 5)
+            _scrape_batch(mid, cfg.BASE_URL, {}, _BATCH_SIZE)
             calculate_all_rankings(mid)
-        except Exception as e:
+        except Exception:
             pass
-    
+
     db.close()
-    return {"ok": True, "matches": len(mids)}
+    return jsonify({"ok": True, "matches": len(mids)})
 
-@app.get("/api/import")
+
+# ===================== Import =====================
+
+@app.route("/api/import", methods=["GET"])
 def import_data_endpoint():
-    """Import data from JSON body (for Vercel migration)"""
-    return {"error": "Use POST with JSON body"}
+    """Import info"""
+    return jsonify({"error": "Use POST with JSON body"})
 
-@app.post("/api/import")
-async def import_data_post(request: Request):
+
+@app.route("/api/import", methods=["POST"])
+def import_data_post():
+    """Import data from JSON body (for Vercel migration)"""
+    ensure_db()
     try:
-        data = await request.json()
+        data = request.get_json(force=True)
     except:
-        return {"error": "invalid JSON"}
-    
+        return jsonify({"error": "invalid JSON"}), 400
+
     db = get_db()
     cursor = db.cursor()
     counts = {}
-    
+
     for table in ['matches', 'shooters', 'stage_scores', 'rankings']:
         rows = data.get(table, [])
         if not rows:
@@ -726,17 +711,36 @@ async def import_data_post(request: Request):
                 pass
         db.commit()
         counts[table] = len(rows)
-    
-    db.close()
-    return counts
-if __name__ == "__main__":
-    init_db()
-    if os.environ.get("VERCEL") != "1":
-        port = int(os.environ.get("PORT", API_PORT))
-        import uvicorn
-        uvicorn.run(app, host=API_HOST, port=port)
 
-# Vercel ASGI support
-if os.environ.get("VERCEL") == "1":
-    from a2wsgi import ASGIMiddleware
-    app = ASGIMiddleware(app)
+    db.close()
+    return jsonify(counts)
+
+
+# ===================== Background Cron (non-Vercel only) =====================
+
+if not _IS_VERCEL:
+    def _start_background_cron():
+        """定時任務：每 5 分鐘自動爬取進行中比賽"""
+        def cron_loop():
+            while True:
+                time.sleep(300)
+                try:
+                    _auto_scrape_active_matches()
+                except Exception as e:
+                    print(f"[CRON] 自動爬取出錯: {e}")
+
+        t = threading.Thread(target=cron_loop, daemon=True)
+        t.start()
+        print("[CRON] 自動爬取已啟動（每 5 分鐘）")
+
+    # Start background cron on import
+    _start_background_cron()
+
+
+# ===================== Main =====================
+
+if __name__ == "__main__":
+    ensure_db()
+    if not _IS_VERCEL:
+        port = int(os.environ.get("PORT", API_PORT))
+        app.run(host=API_HOST, port=port, debug=False)

@@ -5,13 +5,8 @@ import sys, os
 sys.path.insert(0, os.path.dirname(__file__))
 os.chdir(os.path.dirname(__file__))
 
-# Import FastAPI app — module-level code handles Vercel guards
+# Import Flask app
 from app import app
 
-# Wrap ASGI to WSGI for Vercel
-try:
-    from a2wsgi import ASGIMiddleware
-    application = ASGIMiddleware(app)
-    app = application
-except ImportError:
-    pass
+# Vercel looks for `app` (lowercase) as the WSGI callable
+# Flask's `app` is already a WSGI callable, no wrapper needed
