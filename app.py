@@ -126,7 +126,7 @@ def get_matches():
     for m in matches:
         db2 = get_db()
         c = get_cursor(db2)
-        c.execute("SELECT COUNT(*) as cnt FROM shooters WHERE match_id = ?", (m["id"],))
+        c.execute("SELECT COUNT(*) as cnt FROM shooters WHERE match_id = %s", (m["id"],))
         row = c.fetchone()
         m["shooter_count"] = row["cnt"] if row else 0
         db2.close()
@@ -140,7 +140,7 @@ def get_match(match_id):
     ensure_db()
     db = get_db()
     cursor = get_cursor(db)
-    cursor.execute("SELECT id, name, date, venue, level, is_completed FROM matches WHERE id = ?", (match_id,))
+    cursor.execute("SELECT id, name, date, venue, level, is_completed FROM matches WHERE id = %s", (match_id,))
     row = cursor.fetchone()
     if not row:
         db.close()
@@ -151,7 +151,7 @@ def get_match(match_id):
     # 取得有數據嘅 Division（跟 config 順序）
     cursor.execute("""
         SELECT DISTINCT division FROM shooters
-        WHERE match_id = ? AND division IS NOT NULL AND division != ''
+        WHERE match_id = %s AND division IS NOT NULL AND division != ''
     """, (match_id,))
     db_divs = {r["division"] for r in cursor.fetchall()}
     # 跟 config DIVISIONS 順序排列
@@ -159,12 +159,12 @@ def get_match(match_id):
     match_data["divisions"] = [d for d in DIVISIONS if d in db_divs]
 
     # 射手總數
-    cursor.execute("SELECT COUNT(*) as cnt FROM shooters WHERE match_id = ?", (match_id,))
+    cursor.execute("SELECT COUNT(*) as cnt FROM shooters WHERE match_id = %s", (match_id,))
     match_data["shooter_count"] = cursor.fetchone()["cnt"]
 
     # 最後計算時間
     cursor.execute("""
-        SELECT MAX(calculated_at) as last_calc FROM rankings WHERE match_id = ?
+        SELECT MAX(calculated_at) as last_calc FROM rankings WHERE match_id = %s
     """, (match_id,))
     row = cursor.fetchone()
     match_data["last_calculated"] = row["last_calc"] if row else None
@@ -185,7 +185,7 @@ def get_shooters(match_id):
             SELECT id, competitor_number, name, division, class, factor, category,
                    region, total_score
             FROM shooters
-            WHERE match_id = ? AND division = ?
+            WHERE match_id = %s AND division = %s
             ORDER BY competitor_number
         """, (match_id, division))
     else:
@@ -193,7 +193,7 @@ def get_shooters(match_id):
             SELECT id, competitor_number, name, division, class, factor, category,
                    region, total_score
             FROM shooters
-            WHERE match_id = ?
+            WHERE match_id = %s
             ORDER BY competitor_number
         """, (match_id,))
     shooters = [dict(row) for row in cursor.fetchall()]
@@ -228,7 +228,7 @@ def get_rankings(match_id):
             FROM rankings r
             JOIN shooters s ON r.match_id = s.match_id
                 AND r.competitor_number = s.competitor_number
-            WHERE r.match_id = ? AND r.division = ? AND r.rank_type = 'overall'
+            WHERE r.match_id = %s AND r.division = %s AND r.rank_type = 'overall'
             ORDER BY r.place
         """, (match_id, division))
         rows = [dict(r) for r in cursor.fetchall()]
@@ -243,8 +243,8 @@ def get_rankings(match_id):
                 FROM rankings r
                 JOIN shooters s ON r.match_id = s.match_id
                     AND r.competitor_number = s.competitor_number
-                WHERE r.match_id = ? AND r.division = ?
-                  AND r.rank_type = 'category' AND r.group_key = ?
+                WHERE r.match_id = %s AND r.division = %s
+                  AND r.rank_type = 'category' AND r.group_key = %s
                 ORDER BY r.place
             """, (match_id, division, group_key))
             rows = [dict(r) for r in cursor.fetchall()]
@@ -255,7 +255,7 @@ def get_rankings(match_id):
             cursor.execute("""
                 SELECT DISTINCT r.group_key
                 FROM rankings r
-                WHERE r.match_id = ? AND r.division = ? AND r.rank_type = 'category'
+                WHERE r.match_id = %s AND r.division = %s AND r.rank_type = 'category'
                 ORDER BY r.group_key
             """, (match_id, division))
             groups = [r["group_key"] for r in cursor.fetchall()]
@@ -268,8 +268,8 @@ def get_rankings(match_id):
                     FROM rankings r
                     JOIN shooters s ON r.match_id = s.match_id
                         AND r.competitor_number = s.competitor_number
-                    WHERE r.match_id = ? AND r.division = ?
-                      AND r.rank_type = 'category' AND r.group_key = ?
+                    WHERE r.match_id = %s AND r.division = %s
+                      AND r.rank_type = 'category' AND r.group_key = %s
                     ORDER BY r.place
                 """, (match_id, division, g))
                 result[g] = [dict(r) for r in cursor.fetchall()]
@@ -286,8 +286,8 @@ def get_rankings(match_id):
                 FROM rankings r
                 JOIN shooters s ON r.match_id = s.match_id
                     AND r.competitor_number = s.competitor_number
-                WHERE r.match_id = ? AND r.division = ?
-                  AND r.rank_type = 'class' AND r.group_key = ?
+                WHERE r.match_id = %s AND r.division = %s
+                  AND r.rank_type = 'class' AND r.group_key = %s
                 ORDER BY r.place
             """, (match_id, division, group_key))
             rows = [dict(r) for r in cursor.fetchall()]
@@ -298,7 +298,7 @@ def get_rankings(match_id):
             cursor.execute("""
                 SELECT DISTINCT r.group_key
                 FROM rankings r
-                WHERE r.match_id = ? AND r.division = ? AND r.rank_type = 'class'
+                WHERE r.match_id = %s AND r.division = %s AND r.rank_type = 'class'
                 ORDER BY r.group_key
             """, (match_id, division))
             groups = [r["group_key"] for r in cursor.fetchall()]
@@ -310,8 +310,8 @@ def get_rankings(match_id):
                     FROM rankings r
                     JOIN shooters s ON r.match_id = s.match_id
                         AND r.competitor_number = s.competitor_number
-                    WHERE r.match_id = ? AND r.division = ?
-                      AND r.rank_type = 'class' AND r.group_key = ?
+                    WHERE r.match_id = %s AND r.division = %s
+                      AND r.rank_type = 'class' AND r.group_key = %s
                     ORDER BY r.place
                 """, (match_id, division, g))
                 result[g] = [dict(r) for r in cursor.fetchall()]
@@ -338,8 +338,8 @@ def get_rankings(match_id):
                     AND ss.match_id = r.match_id
                     AND (ss.stage_name = r.group_key
                          OR ss.stage_name = REPLACE(r.group_key, ' 0', ' '))
-                WHERE r.match_id = ? AND r.division = ?
-                  AND r.rank_type = 'stage' AND r.group_key = ?
+                WHERE r.match_id = %s AND r.division = %s
+                  AND r.rank_type = 'stage' AND r.group_key = %s
                 ORDER BY r.place
             """, (match_id, division, group_key))
             rows = [dict(r) for r in cursor.fetchall()]
@@ -350,7 +350,7 @@ def get_rankings(match_id):
             cursor.execute("""
                 SELECT DISTINCT r.group_key
                 FROM rankings r
-                WHERE r.match_id = ? AND r.division = ? AND r.rank_type = 'stage'
+                WHERE r.match_id = %s AND r.division = %s AND r.rank_type = 'stage'
                 ORDER BY r.group_key
             """, (match_id, division))
             stages = [r["group_key"] for r in cursor.fetchall()]
@@ -371,7 +371,7 @@ def get_stages(match_id):
     cursor.execute("""
         SELECT DISTINCT ss.stage_number, ss.stage_name
         FROM stage_scores ss
-        WHERE ss.match_id = ?
+        WHERE ss.match_id = %s
         ORDER BY ss.stage_number
     """, (match_id,))
     stages = [dict(r) for r in cursor.fetchall()]
@@ -394,7 +394,7 @@ def trigger_scrape(match_id):
 
         db = get_db()
         cursor = get_cursor(db)
-        cursor.execute("SELECT id, is_completed FROM matches WHERE id = ?", (match_id,))
+        cursor.execute("SELECT id, is_completed FROM matches WHERE id = %s", (match_id,))
         row = cursor.fetchone()
         if not row:
             db.close()
@@ -513,26 +513,26 @@ def _scrape_batch(match_id, base_url, cfg_dict, batch_size=5):
     # 找未爬的 shooter
     cursor.execute("""
         SELECT s.competitor_number FROM shooters s
-        WHERE s.match_id = ?
+        WHERE s.match_id = %s
         AND (
             SELECT COUNT(*) FROM stage_scores ss WHERE ss.shooter_id = s.id
         ) = 0
         ORDER BY s.competitor_number
-        LIMIT ?
+        LIMIT %s
     """, (match_id, batch_size))
     to_scrape = [r[0] for r in cursor.fetchall()]
     cursor.close()
 
     if not to_scrape:
         cursor = get_cursor(db)
-        cursor.execute("SELECT MAX(competitor_number) FROM shooters WHERE match_id = ?", (match_id,))
+        cursor.execute("SELECT MAX(competitor_number) FROM shooters WHERE match_id = %s", (match_id,))
         max_num = cursor.fetchone()[0] or 0
         cursor.close()
         to_scrape = list(range(max_num + 1, min(max_num + 1 + batch_size, 220)))
 
     scraped = 0
     for comp_num in to_scrape:
-        verify_url = f"{base_url}/portal/verify_competitor.php?comp_num={comp_num}"
+        verify_url = f"{base_url}/portal/verify_competitor.php%scomp_num={comp_num}"
         try:
             resp = _req.get(verify_url, timeout=10)
             html = resp.text
@@ -556,7 +556,7 @@ def _save_shooter_data(match_id, data):
     cursor = get_cursor(db)
 
     # 檢查是否存在
-    cursor.execute("SELECT id FROM shooters WHERE match_id = ? AND competitor_number = ?",
+    cursor.execute("SELECT id FROM shooters WHERE match_id = %s AND competitor_number = %s",
                    (match_id, data["competitor_number"]))
     existing = cursor.fetchone()
 
@@ -565,20 +565,20 @@ def _save_shooter_data(match_id, data):
     else:
         cursor.execute("""
             INSERT INTO shooters (match_id, competitor_number, name, division, category, class, factor, region)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         """, (match_id, data["competitor_number"], data["name"], data["division"],
               data.get("category", ""), data.get("class", ""), data.get("factor", ""), data.get("region", "")))
         db.commit()
         shooter_id = cursor.lastrowid
 
     # 清空舊 stage scores
-    cursor.execute("DELETE FROM stage_scores WHERE shooter_id = ?", (shooter_id,))
+    cursor.execute("DELETE FROM stage_scores WHERE shooter_id = %s", (shooter_id,))
 
     # 插入新 stage scores
     for stg in data.get("stages", []):
         cursor.execute("""
             INSERT INTO stage_scores (shooter_id, match_id, stage_number, pts, a, c, d, mi, ns, pe, time, hit_factor)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """, (shooter_id, match_id, stg["stage_num"], stg.get("pts", 0),
               stg.get("a", 0), stg.get("c", 0), stg.get("d", 0),
               stg.get("mi", 0), stg.get("ns", 0), stg.get("pe", 0),
@@ -625,7 +625,7 @@ def get_scrape_log():
         SELECT sl.*, m.name as match_name
         FROM scrape_log sl
         JOIN matches m ON sl.match_id = m.id
-        ORDER BY sl.id DESC LIMIT ?
+        ORDER BY sl.id DESC LIMIT %s
     """, (limit,))
     logs = [dict(r) for r in cursor.fetchall()]
     db.close()
@@ -708,7 +708,7 @@ def import_data_post():
         if not rows:
             continue
         cols = list(rows[0].keys())
-        placeholders = ','.join(['?'] * len(cols))
+        placeholders = ','.join(['%s'] * len(cols))
         col_names = ','.join(cols)
         for row in rows:
             vals = [row.get(c) for c in cols]
