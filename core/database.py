@@ -1,5 +1,5 @@
 """IPSC 排名系統 - 數據庫模型（雙模式：SQLite / PostgreSQL）"""
-import os
+import os, sys
 
 # 自動檢測模式：Vercel 環境用 PostgreSQL（需有 DATABASE_URL），否則用 SQLite
 _IS_VERCEL = os.environ.get("VERCEL") == "1"
