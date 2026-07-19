@@ -580,8 +580,22 @@ def scrape_match(match_id, base_url, cfg, use_mock=False):
     conn = get_db()
     cursor = conn.cursor()
 
+    # Skip 已經有 stage data 嘅 shooter number
+    cursor.execute("SELECT DISTINCT s.competitor_number FROM shooters s WHERE s.match_id = ?",
+        (match_id,))
+    shoters_in_db = {r[0] for r in cursor.fetchall()}
+    skipped = 0
+    if len(shoters_in_db) > 0:
+        print(f"  [SKIP] 已知 {len(shoters_in_db)} 位射手於比賽 #{match_id}")
+
     try:
         for num in range(1, max_num + 1):
+            if num in shoters_in_db:
+                skipped += 1
+                if skipped % 20 == 0:
+                    print(f"  [{num}] 跳過 (已有數據)")
+                continue
+            skipped = 0
             if use_mock:
                 html = MOCK_VERIFY_HTML
             else:
