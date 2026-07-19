@@ -113,17 +113,17 @@ def calculate_division_rankings(match_id, division):
                     stage_score = (hf / max_hf) * max_ss if max_hf > 0 else 0
                     total += stage_score
 
+                    # ★ 回寫 dict（供後續 stage ranking 使用）
+                    stages[stage_num]["stage_score"] = stage_score
+
                     cursor.execute("""
                         UPDATE stage_scores
                         SET stage_score = ?
                         WHERE shooter_id = ? AND stage_number = ?
                     """, (round(stage_score, 4), sid, stage_num))
                 else:
-                    cursor.execute("""
-                        UPDATE stage_scores
-                        SET stage_score = 0
-                        WHERE shooter_id = ? AND stage_number = ?
-                    """, (sid, stage_num))
+                    if stage_num in stages:
+                        stages[stage_num]["stage_score"] = 0
 
             shooter_totals[sid] = round(total, 4)
 
@@ -367,7 +367,13 @@ def calculate_all_rankings(match_id):
                     if ss and ss["time"] > 0:
                         mhf = stage_max_hf.get(stage_num, 1)
                         mss = stage_max_score.get(stage_num, 0)
-                        total += (ss["hit_factor"] / mhf) * mss if mhf > 0 else 0
+                        stage_score = (ss["hit_factor"] / mhf) * mss if mhf > 0 else 0
+                        total += stage_score
+                        # ★ 回寫 dict（供後續 stage ranking 使用）
+                        shooter_stages[sid][stage_num]["stage_score"] = stage_score
+                    else:
+                        if sid in shooter_stages and stage_num in shooter_stages.get(sid, {}):
+                            shooter_stages[sid][stage_num]["stage_score"] = 0
                 shooter_totals[sid] = round(total, 4)
         else:
             # 冇 stage 數據：直接用 shooters.total_score
