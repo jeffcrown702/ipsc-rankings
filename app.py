@@ -463,58 +463,146 @@ def _auto_scrape_active_matches():
 
 @app.post("/api/scrape/run")
 def run_scrape():
-    """手動執行爬取所有比賽（異步，線程安全）"""
+    """手動執行爬取所有比賽（同步版，每次爬 5 個 shooter，適合 Vercel 10 秒限制）"""
     global scrape_status
-    if not _scrape_lock.acquire(blocking=False):
-        return {"status": "busy", "message": "爬取系統繁忙，請稍後再試"}
     if scrape_status["running"]:
-        _scrape_lock.release()
         return {"status": "running", "message": "爬取進行中，請稍後"}
-
-    def task():
-        global scrape_status
-        scrape_status["running"] = True
-        scrape_status["progress"] = "同步比賽列表 + 檢測 completion..."
-        cfg = load_config()
-        base_url = cfg["base_url"]
-        try:
-            # 同步比賽列表（含 completion detection）
-            matches = scraper_sync_matches(base_url)
-            scrape_status["progress"] = f"同步 {len(matches)} 場比賽（含 completion 檢測）"
-
-            db = get_db()
-            cursor = db.cursor()
-            # 只爬未完賽（is_completed=0）嘅比賽
-            cursor.execute("""
-                SELECT id, name FROM matches WHERE is_completed = 0 ORDER BY id DESC
-            """)
-            active = [dict(r) for r in cursor.fetchall()]
-            db.close()
-
-            if not active:
-                scrape_status["progress"] = "冇進行中比賽需要爬取"
-            else:
-                scrape_status["progress"] = f"有 {len(active)} 場進行中比賽"
-
+    
+    scrape_status["running"] = True
+    scrape_status["progress"] = "同步比賽列表..."
+    cfg = load_config()
+    base_url = cfg["base_url"]
+    
+    try:
+        # 同步比賽列表
+        matches = scraper_sync_matches(base_url)
+        scrape_status["progress"] = f"同步 {len(matches)} 場比賽"
+        
+        db = get_db()
+        cursor = db.cursor() if not hasattr(get_db, '__wrapped__') else db.cursor()
+        cursor.execute("SELECT id, name FROM matches WHERE is_completed = 0 ORDER BY id DESC")
+        active = [dict(r) for r in cursor.fetchall()]
+        
+        # 取目前已爬 shooter 數量
+        for m in active:
+            mid = m["id"]
+            c2 = db.cursor()
+            c2.execute("SELECT COUNT(*) FROM shooters WHERE match_id = ? AND stage_scores_count > 0", (mid,))
+            scraped_count = c2.fetchone()[0]
+            m["scraped"] = scraped_count
+            c2.close()
+        
+        db.close()
+        
+        if not active:
+            scrape_status["progress"] = "冇進行中比賽需要爬取"
+        else:
+            total_msg = []
+            for m in active:
+                total_msg.append(f"#{m['id']}(已爬{m['scraped']}人)")
+            scrape_status["progress"] = f"進行中: {', '.join(total_msg)}"
+            
+            # 逐場爬，每次最多 5 個 shooter（Vercel 10 秒限制）
+            BATCH_SIZE = 5
             for m_dict in active:
                 mid = m_dict["id"]
-                scrape_status["progress"] = f"處理比賽 #{mid} ({m_dict['name']})..."
+                scrape_status["progress"] = f"比賽 #{mid}: 爬取下一批射手..."
                 scrape_status["last_run"] = datetime.now().isoformat()
-                scrape_match(mid, base_url, cfg)
+                
+                # 自訂批次爬取
+                _scrape_batch(mid, base_url, cfg, BATCH_SIZE)
                 calculate_all_rankings(mid)
+            
+            scrape_status["progress"] = "全部完成"
+    except Exception as e:
+        scrape_status["progress"] = f"錯誤: {e}"
+        import traceback; traceback.print_exc()
+    finally:
+        scrape_status["running"] = False
+    
+    return {"status": "completed", "message": scrape_status["progress"]}
 
-            scrape_status["progress"] = f"全部完成"
-        except Exception as e:
-            scrape_status["progress"] = f"錯誤: {e}"
-            import traceback; traceback.print_exc()
-        finally:
-            scrape_status["running"] = False
-            _scrape_lock.release()
 
-    thread = threading.Thread(target=task, daemon=True)
-    thread.start()
-    return {"status": "started", "message": "爬取已開始（異步）"}
+def _scrape_batch(match_id: int, base_url: str, cfg: dict, batch_size: int = 5):
+    """只爬少量 shooter，適合 Vercel 10 秒限制"""
+    from core.scraper import fetch_html, parse_verify_page, BASE_URL
+    
+    db = get_db()
+    cursor = db.cursor()
+    
+    # 找未爬的 shooter
+    cursor.execute("""
+        SELECT s.competitor_number FROM shooters s
+        WHERE s.match_id = ? 
+        AND (
+            SELECT COUNT(*) FROM stage_scores ss WHERE ss.shooter_id = s.id
+        ) = 0
+        ORDER BY s.competitor_number
+        LIMIT ?
+    """, (match_id, batch_size))
+    to_scrape = [r[0] for r in cursor.fetchall()]
+    cursor.close()
+    
+    if not to_scrape:
+        # 全部已爬或冇 shooter record，從 1 開始新增
+        cursor = db.cursor()
+        cursor.execute("SELECT MAX(competitor_number) FROM shooters WHERE match_id = ?", (match_id,))
+        max_num = cursor.fetchone()[0] or 0
+        cursor.close()
+        to_scrape = list(range(max_num + 1, min(max_num + 1 + batch_size, 220)))
+    
+    scraped = 0
+    for comp_num in to_scrape:
+        verify_url = f"{base_url}/portal/verify_competitor.php?comp_num={comp_num}"
+        html = fetch_html(verify_url)
+        if html:
+            result = parse_verify_page(html, comp_num, match_id)
+            if result and result["name"] != "Unknown":
+                _save_shooter_data(match_id, result)
+                scraped += 1
+    
+    db.close()
+    return scraped
 
+
+def _save_shooter_data(match_id: int, data: dict):
+    """儲存單一射手數據到 DB"""
+    from core.database import get_db, get_cursor
+    
+    db = get_db()
+    cursor = db.cursor() if not hasattr(get_db, '__wrapped__') else db.cursor()
+    
+    # 檢查是否存在
+    cursor.execute("SELECT id FROM shooters WHERE match_id = ? AND competitor_number = ?", 
+                   (match_id, data["competitor_number"]))
+    existing = cursor.fetchone()
+    
+    if existing:
+        shooter_id = existing[0]
+    else:
+        cursor.execute("""
+            INSERT INTO shooters (match_id, competitor_number, name, division, category, class, factor, region)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (match_id, data["competitor_number"], data["name"], data["division"],
+              data.get("category", ""), data.get("class", ""), data.get("factor", ""), data.get("region", "")))
+        db.commit()
+        shooter_id = cursor.lastrowid
+    
+    # 清空舊 stage scores
+    cursor.execute("DELETE FROM stage_scores WHERE shooter_id = ?", (shooter_id,))
+    
+    # 插入新 stage scores
+    for stg in data.get("stages", []):
+        cursor.execute("""
+            INSERT INTO stage_scores (shooter_id, match_id, stage_number, pts, a, c, d, mi, ns, pe, time, hit_factor)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (shooter_id, match_id, stg["stage_num"], stg.get("pts", 0),
+              stg.get("a", 0), stg.get("c", 0), stg.get("d", 0),
+              stg.get("mi", 0), stg.get("ns", 0), stg.get("pe", 0),
+              stg.get("time", 0), stg.get("hit_factor", 0)))
+    
+    db.commit()
+    cursor.close()
 
 @app.get("/api/scrape/status")
 def get_scrape_status():
@@ -590,11 +678,14 @@ def cron_scrape():
     cursor.close()
     for mid in mids:
         try:
-            scrape_match(mid); calculate_all_rankings(mid)
+            _scrape_batch(mid, BASE_URL, {}, 5)
+            calculate_all_rankings(mid)
         except Exception as e:
             pass
+    
     db.close()
     return {"ok": True, "matches": len(mids)}
+
 @app.get("/api/import")
 def import_data_endpoint():
     """Import data from JSON body (for Vercel migration)"""
