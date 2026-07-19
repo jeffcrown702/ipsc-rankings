@@ -755,7 +755,7 @@ def import_data_post():
         if not rows:
             continue
         cols = list(rows[0].keys())
-        placeholders = ','.join(['?'] * len(cols))
+        placeholders = ','.join(['%s'] * len(cols))
         col_names = ','.join(cols)
         for row in rows:
             vals = [row.get(c) for c in cols]
