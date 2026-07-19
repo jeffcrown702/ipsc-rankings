@@ -268,8 +268,9 @@ function shooterLink(name, compNum) {
 }
 
 function showError(msg) {
-            box.style.display = 'block';
-        }
+    document.getElementById('errorBox').style.display = 'block';
+    document.getElementById('errorBox').textContent = msg;
+}
 
         function hideError() {
             document.getElementById('errorBox').style.display = 'none';

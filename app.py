@@ -114,6 +114,27 @@ def get_matches():
     return {"matches": matches}
 
 
+@app.get("/api/matches/{match_id}")
+def get_match(match_id: int):
+    """獲取單場比賽詳情（含 divisions）"""
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute("SELECT id, name, date, venue, level, is_completed FROM matches WHERE id = ?", (match_id,))
+    row = cursor.fetchone()
+    if not row:
+        db.close()
+        raise HTTPException(404, "比賽不存在")
+    
+    match_data = dict(row)
+    
+    # Get unique divisions for this match
+    cursor.execute("SELECT DISTINCT division FROM shooters WHERE match_id = ? AND division != '' ORDER BY division", (match_id,))
+    match_data["divisions"] = [r[0] for r in cursor.fetchall()]
+    
+    db.close()
+    return {"match": match_data}
+
+
 @app.post("/api/import")
 def import_data(data: dict):
     """Import data from local SQLite export"""
