@@ -103,7 +103,33 @@ def get_matches():
     return {"matches": matches}
 
 
-@app.get("/api/matches/{match_id}")
+@app.post("/api/import")
+def import_data(data: dict):
+    """Import data from local SQLite export"""
+    db = get_db()
+    cur = db.cursor()
+    counts = {}
+    
+    for table in ['matches', 'shooters', 'stage_scores', 'rankings']:
+        rows = data.get(table, [])
+        if not rows:
+            continue
+        # Get columns from first row
+        cols = list(rows[0].keys())
+        placeholders = ','.join(['?' if not USE_POSTGRES else '%s'] * len(cols))
+        col_names = ','.join(cols)
+        
+        for row in rows:
+            values = [row.get(c) for c in cols]
+            try:
+                cur.execute(f"INSERT INTO {table} ({col_names}) VALUES ({placeholders})", values)
+            except Exception as e:
+                print(f"[IMPORT] {table} skip: {e}")
+        
+        db.commit()
+        counts[table] = len(rows)
+    
+    return counts
 def get_match(match_id: int):
     """獲取比賽詳情"""
     db = get_db()
@@ -550,6 +576,29 @@ def match_page(match_id: int):
     return html.replace("{{MATCH_ID}}", str(match_id))
 
 
+
+@app.get("/api/cron/scrape")
+def cron_scrape():
+    """Vercel cron job: 自動爬取 active matches"""
+    if not _IS_VERCEL:
+        return {"error": "only for Vercel"}
+    from core.scraper import fetch_html, sync_matches, parse_matches, scrape_match
+    from core.scoring_engine import calculate_all_rankings
+    html = fetch_html(BASE_URL)
+    if html:
+        sync_matches(html); parse_matches(html)
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute("SELECT id FROM matches WHERE is_completed = 0")
+    mids = [r[0] for r in cursor.fetchall()]
+    cursor.close()
+    for mid in mids:
+        try:
+            scrape_match(mid); calculate_all_rankings(mid)
+        except Exception as e:
+            pass
+    db.close()
+    return {"ok": True, "matches": len(mids)}
 if __name__ == "__main__":
     init_db()
     if os.environ.get("VERCEL") != "1":
