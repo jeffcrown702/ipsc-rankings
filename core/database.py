@@ -40,18 +40,30 @@ def get_db():
     return conn
 
 
+class _SQLiteCursor:
+    """Wrapper for SQLite: converts %s to ? in execute()"""
+    def __init__(self, db):
+        self._cur = db.cursor()
+    def execute(self, sql, params=None):
+        sql = sql.replace('%s', '?')
+        if params is None:
+            return self._cur.execute(sql)
+        return self._cur.execute(sql, params)
+    def fetchall(self):
+        return self._cur.fetchall()
+    def fetchone(self):
+        return self._cur.fetchone()
+    def close(self):
+        return self._cur.close()
+    def __getattr__(self, name):
+        return getattr(self._cur, name)
+
 def get_cursor(db):
-    """獲取 cursor，PostgreSQL 用 RealDictCursor + ?→%s auto-convert"""
+    """獲取 cursor，SQLite 用 Row wrapper，PostgreSQL 用 RealDictCursor"""
     if USE_POSTGRES and DATABASE_URL:
         import psycopg2.extras
-        cur = db.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        _orig = cur.execute
-        def _patched(sql, params=None):
-            sql = sql.replace('?', '%s')
-            return _orig(sql, params)
-        cur.execute = _patched
-        return cur
-    return db.cursor()
+        return db.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    return _SQLiteCursor(db)
 
 
 def get_cursor(conn):
