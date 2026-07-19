@@ -645,8 +645,52 @@ def get_scrape_log():
 
 @app.route("/")
 def index():
-    """主頁"""
+    """主頁 — 伺服器端 render 比賽列表"""
     ensure_db()
+    html = open("templates/index.html", encoding="utf-8").read()
+    try:
+        db = get_db()
+        cursor = get_cursor(db)
+        cursor.execute("""
+            SELECT id, name, date, venue, level, is_completed, last_scraped
+            FROM matches
+            ORDER BY substr(date,7,4)||'-'||substr(date,4,2)||'-'||substr(date,1,2) DESC, id DESC
+        """)
+        matches = [dict(row) for row in cursor.fetchall()]
+        db.close()
+
+        # 加 shooter count
+        for m in matches:
+            db2 = get_db()
+            c = get_cursor(db2)
+            c.execute("SELECT COUNT(*) as cnt FROM shooters WHERE match_id = %s", (m["id"],))
+            m["shooter_count"] = c.fetchone()["cnt"]
+            db2.close()
+
+        cards = []
+        for m in matches:
+            status = "✅ 已完成" if m["is_completed"] else ("🟡 進行中" if m.get("shooter_count", 0) > 0 else "🔴 未開始")
+            level_str = ("· " + m["level"]) if m.get("level") else ""
+            cards.append(
+                '<a href="/match/%d" class="match-card">'
+                '<div class="top-row">'
+                '<span class="match-name">%s</span>'
+                '<span class="match-date">%s</span>'
+                '</div>'
+                '<div class="match-meta">'
+                '%s %s · <strong>%d</strong> 位射手'
+                '</div>'
+                '<div class="match-status">%s</div>'
+                '</a>' % (m["id"], m["name"], m["date"] or "", m["venue"] or "", level_str, m.get("shooter_count", 0), status)
+            )
+        cards_html = "\n".join(cards)
+        # 注入 match list 到 HTML
+        html = html.replace('<div id="matchList"></div>',
+            f'<div id="matchList">{cards_html}</div>')
+        html = html.replace("載入中...", "")
+        return html
+    except Exception as e:
+        return html.replace("載入中...", f"<div class='error-banner'>載入失敗: {e}</div>")
     return render_template("index.html")
 
 
