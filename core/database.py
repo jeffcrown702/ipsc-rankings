@@ -19,8 +19,18 @@ if not USE_POSTGRES:
 def get_db():
     """獲取數據庫連接（自動選擇 SQLite 或 PostgreSQL）"""
     if USE_POSTGRES:
-        import psycopg2
-        import psycopg2.extras
+        try:
+            import psycopg2
+            import psycopg2.extras
+        except ImportError:
+            # Fallback to SQLite if psycopg2 not available
+            import sqlite3
+            os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+            conn = sqlite3.connect(DB_PATH)
+            conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA foreign_keys=ON")
+            return conn
         conn = psycopg2.connect(DATABASE_URL)
         conn.autocommit = False
         return conn
