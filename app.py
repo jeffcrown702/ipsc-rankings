@@ -517,13 +517,8 @@ def run_scrape():
 
 
 @app.get("/api/scrape/status")
-def get_status_vercel():
-    if _IS_VERCEL:
-        return {"running":False,"progress":"Vercel - 自動爬取已停用"}
-
-@app.get("/api/scrape/status")
 def get_scrape_status():
-    """獲取爬取狀態"""
+    """獲取爬取狀態（Vercel 友好版）"""
     s = dict(scrape_status)
     s["next_auto_scrape_sec"] = 300
     if _last_auto_scrape:
@@ -532,6 +527,7 @@ def get_scrape_status():
     if not s["locked"]:
         _scrape_lock.release()
     s["cooldown_sec"] = 120
+    s["running"] = s.get("running", False) or _scrape_lock.locked()
     return s
 
 
