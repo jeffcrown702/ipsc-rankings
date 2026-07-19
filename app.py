@@ -465,8 +465,9 @@ def _auto_scrape_active_matches():
 def run_scrape():
     """Vercel: 同步爬 3 個 shooter（保證 10 秒內完成）"""
     global scrape_status
-    if scrape_status.get("running") and scrape_status["progress"] != "全部完成":
-        return {"status": "running", "message": "爬取進行中，請稍後"}
+    scrape_status = {"running": False, "progress": "", "last_run": None}
+    if scrape_status["running"]:
+        return {"status": "running"}
     
     scrape_status["running"] = True
     scrape_status["progress"] = "直接爬比賽 #37..."
