@@ -652,20 +652,15 @@ def index():
         db = get_db()
         cursor = get_cursor(db)
         cursor.execute("""
-            SELECT id, name, date, venue, level, is_completed, last_scraped
-            FROM matches
-            ORDER BY substr(date,7,4)||'-'||substr(date,4,2)||'-'||substr(date,1,2) DESC, id DESC
+            SELECT m.id, m.name, m.date, m.venue, m.level, m.is_completed,
+                   COUNT(s.id) as shooter_count
+            FROM matches m
+            LEFT JOIN shooters s ON s.match_id = m.id
+            GROUP BY m.id
+            ORDER BY substr(m.date,7,4)||'-'||substr(m.date,4,2)||'-'||substr(m.date,1,2) DESC, m.id DESC
         """)
         matches = [dict(row) for row in cursor.fetchall()]
         db.close()
-
-        # 加 shooter count
-        for m in matches:
-            db2 = get_db()
-            c = get_cursor(db2)
-            c.execute("SELECT COUNT(*) as cnt FROM shooters WHERE match_id = %s", (m["id"],))
-            m["shooter_count"] = c.fetchone()["cnt"]
-            db2.close()
 
         cards = []
         for m in matches:
@@ -684,13 +679,12 @@ def index():
                 '</a>' % (m["id"], m["name"], m["date"] or "", m["venue"] or "", level_str, m.get("shooter_count", 0), status)
             )
         cards_html = "\n".join(cards)
-        # 注入 match list 到 HTML
         html = html.replace('<div id="matchList"></div>',
-            f'<div id="matchList">{cards_html}</div>')
+            '<div id="matchList">%s</div>' % cards_html)
         html = html.replace("載入中...", "")
         return html
     except Exception as e:
-        return html.replace("載入中...", f"<div class='error-banner'>載入失敗: {e}</div>")
+        return html.replace("載入中...", "<div class='error-banner'>載入失敗: %s</div>" % str(e))
     return render_template("index.html")
 
 
