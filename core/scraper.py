@@ -326,7 +326,9 @@ def parse_verify_page(html):
     if not info_text:
         return None
 
-    div_match   = re.search(r"DIV:\s*(\S+)", info_text)
+    # 提取選手基本資料行（支援 multi-word division 如 "Production Optics"）
+    #    真實 HTML: <div>DIV: Production Optics                CLASSE: C                FATOR: Minor                CAT:  Lady</div>
+    div_match   = re.search(r"DIV:\s*(.+?)\s{2,}CLASSE:", info_text)
     cls_match   = re.search(r"CLASSE:\s*(\S+)", info_text)
     fac_match   = re.search(r"FATOR:\s*(\S+)", info_text)
     cat_match   = re.search(r"CAT:\s*(\S+(?:\s+\S+)?)", info_text)
