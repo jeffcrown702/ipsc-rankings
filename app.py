@@ -755,12 +755,13 @@ def import_data_post():
         if not rows:
             continue
         cols = list(rows[0].keys())
-        placeholders = ','.join(['%s'] * len(cols))
+        ph = ','.join(['%s'] * len(cols))
         col_names = ','.join(cols)
+        sql = "INSERT INTO " + table + " (" + col_names + ") VALUES (" + ph + ")"
         for row in rows:
             vals = [row.get(c) for c in cols]
             try:
-                cursor.execute(f"INSERT INTO {table} ({col_names}) VALUES ({placeholders})", vals)
+                cursor.execute(sql, vals)
             except:
                 pass
         db.commit()
