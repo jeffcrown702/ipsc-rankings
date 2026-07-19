@@ -12,7 +12,7 @@ API Endpoints:
 import json
 import threading
 from datetime import datetime
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -599,6 +599,40 @@ def cron_scrape():
             pass
     db.close()
     return {"ok": True, "matches": len(mids)}
+@app.get("/api/import")
+def import_data_endpoint():
+    """Import data from JSON body (for Vercel migration)"""
+    return {"error": "Use POST with JSON body"}
+
+@app.post("/api/import")
+async def import_data_post(request: Request):
+    try:
+        data = await request.json()
+    except:
+        return {"error": "invalid JSON"}
+    
+    db = get_db()
+    cursor = db.cursor()
+    counts = {}
+    
+    for table in ['matches', 'shooters', 'stage_scores', 'rankings']:
+        rows = data.get(table, [])
+        if not rows:
+            continue
+        cols = list(rows[0].keys())
+        placeholders = ','.join(['?'] * len(cols))
+        col_names = ','.join(cols)
+        for row in rows:
+            vals = [row.get(c) for c in cols]
+            try:
+                cursor.execute(f"INSERT INTO {table} ({col_names}) VALUES ({placeholders})", vals)
+            except:
+                pass
+        db.commit()
+        counts[table] = len(rows)
+    
+    db.close()
+    return counts
 if __name__ == "__main__":
     init_db()
     if os.environ.get("VERCEL") != "1":
