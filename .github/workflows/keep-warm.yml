@@ -2,7 +2,7 @@ name: Keep Vercel Warm
 
 on:
   schedule:
-    - cron: "*/3 * * * *"
+    - cron: "*/1 * * * *"
   workflow_dispatch:
 
 jobs:
