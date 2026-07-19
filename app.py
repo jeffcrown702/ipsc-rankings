@@ -72,18 +72,19 @@ def _should_auto_scrape(match_id, cooldown_sec=120):
 @app.on_event("startup")
 def startup():
     init_db()
-    # 定時任務：每 5 分鐘自動爬取進行中比賽
-    def cron_loop():
-        while True:
-            time.sleep(300)  # 5 分鐘
-            try:
-                _auto_scrape_active_matches()
-            except Exception as e:
-                print(f"[CRON] 自動爬取出錯: {e}")
+    if not _IS_VERCEL:
+        # 定時任務：每 5 分鐘自動爬取進行中比賽
+        def cron_loop():
+            while True:
+                time.sleep(300)  # 5 分鐘
+                try:
+                    _auto_scrape_active_matches()
+                except Exception as e:
+                    print(f"[CRON] 自動爬取出錯: {e}")
 
-    t = threading.Thread(target=cron_loop, daemon=True)
-    t.start()
-    print("[CRON] 自動爬取已啟動（每 5 分鐘）")
+        t = threading.Thread(target=cron_loop, daemon=True)
+        t.start()
+        print("[CRON] 自動爬取已啟動（每 5 分鐘）")
 
 
 # ===================== API Routes =====================
