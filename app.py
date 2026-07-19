@@ -90,6 +90,13 @@ def _should_auto_scrape(match_id, cooldown_sec=120):
 def not_found(e):
     return jsonify({"error": "Not found"}), 404
 
+@app.errorhandler(500)
+def server_error(e):
+    import traceback
+    tb = traceback.format_exc()
+    print(f"[500] {e}\n{tb}")
+    return jsonify({"error": str(e), "traceback": tb}), 500
+
 @app.errorhandler(400)
 def bad_request(e):
     return jsonify({"error": str(e)}), 400
