@@ -16,6 +16,8 @@ from app import app
 try:
     from a2wsgi import ASGIMiddleware
     application = ASGIMiddleware(app)
+    # Vercel expects 'app'
+    app = application
 except ImportError:
     # Fallback: Starlette app works as ASGI only
     # This won't work on PythonAnywhere but prevents import error
