@@ -108,6 +108,12 @@ def server_error(e):
 
 # ===================== API Routes =====================
 
+@app.route("/api/debug/version")
+def debug_version():
+    """Check deployed version"""
+    return jsonify({"version": "edeae5e", "db": "PostgreSQL" if USE_POSTGRES and DATABASE_URL else "SQLite"})
+
+
 @app.route('/api/cron/keepwarm')
 def cron_keepwarm():
     """Keep Neon warm — Vercel cron every 4 min"""
