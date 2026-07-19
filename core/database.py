@@ -24,6 +24,7 @@ def get_db():
             import psycopg2.extras
         except ImportError:
             # Fallback to SQLite if psycopg2 not available
+            USE_POSTGRES = False
             import sqlite3
             os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
             conn = sqlite3.connect(DB_PATH)
