@@ -182,7 +182,7 @@ def get_rankings(match_id: int, division: str, rank_type: str = "overall",
             JOIN shooters s ON r.match_id = s.match_id
                 AND r.competitor_number = s.competitor_number
             WHERE r.match_id = ? AND r.division = ? AND r.rank_type = 'overall'
-            ORDER BY CASE WHEN r.place = 0 THEN 1 ELSE 0 END, r.place
+            ORDER BY r.place
         """, (match_id, division))
         rows = [dict(r) for r in cursor.fetchall()]
         db.close()
@@ -198,7 +198,7 @@ def get_rankings(match_id: int, division: str, rank_type: str = "overall",
                     AND r.competitor_number = s.competitor_number
                 WHERE r.match_id = ? AND r.division = ?
                   AND r.rank_type = 'category' AND r.group_key = ?
-                ORDER BY CASE WHEN r.place = 0 THEN 1 ELSE 0 END, r.place
+                ORDER BY r.place
             """, (match_id, division, group_key))
             rows = [dict(r) for r in cursor.fetchall()]
             db.close()
@@ -224,7 +224,7 @@ def get_rankings(match_id: int, division: str, rank_type: str = "overall",
                         AND r.competitor_number = s.competitor_number
                     WHERE r.match_id = ? AND r.division = ?
                       AND r.rank_type = 'category' AND r.group_key = ?
-                    ORDER BY CASE WHEN r.place = 0 THEN 1 ELSE 0 END, r.place
+                    ORDER BY r.place
                 """, (match_id, division, g))
                 result[g] = [dict(r) for r in cursor.fetchall()]
 
@@ -242,7 +242,7 @@ def get_rankings(match_id: int, division: str, rank_type: str = "overall",
                     AND r.competitor_number = s.competitor_number
                 WHERE r.match_id = ? AND r.division = ?
                   AND r.rank_type = 'class' AND r.group_key = ?
-                ORDER BY CASE WHEN r.place = 0 THEN 1 ELSE 0 END, r.place
+                ORDER BY r.place
             """, (match_id, division, group_key))
             rows = [dict(r) for r in cursor.fetchall()]
             db.close()
@@ -266,7 +266,7 @@ def get_rankings(match_id: int, division: str, rank_type: str = "overall",
                         AND r.competitor_number = s.competitor_number
                     WHERE r.match_id = ? AND r.division = ?
                       AND r.rank_type = 'class' AND r.group_key = ?
-                    ORDER BY CASE WHEN r.place = 0 THEN 1 ELSE 0 END, r.place
+                    ORDER BY r.place
                 """, (match_id, division, g))
                 result[g] = [dict(r) for r in cursor.fetchall()]
             db.close()
@@ -294,7 +294,7 @@ def get_rankings(match_id: int, division: str, rank_type: str = "overall",
                          OR ss.stage_name = REPLACE(r.group_key, ' 0', ' '))
                 WHERE r.match_id = ? AND r.division = ?
                   AND r.rank_type = 'stage' AND r.group_key = ?
-                ORDER BY CASE WHEN r.place = 0 THEN 1 ELSE 0 END, r.place
+                ORDER BY r.place
             """, (match_id, division, group_key))
             rows = [dict(r) for r in cursor.fetchall()]
             db.close()

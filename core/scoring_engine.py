@@ -159,22 +159,17 @@ def calculate_division_rankings(match_id, division):
     def sort_key(sid):
         return (0 if shooter_totals.get(sid, 0) > 0 else 1, -(shooter_totals.get(sid, 0)))
     ranked = sorted(shooter_ids, key=sort_key)
-    # 有分數嘅射手先計 Place
-    valid_count = 0
     top_score = 0
     for sid in ranked:
         ts = shooter_totals.get(sid, 0)
-        if ts > 0:
-            valid_count += 1
-            if top_score == 0:
-                top_score = ts
+        if ts > 0 and top_score == 0:
+            top_score = ts
+        if top_score > 0:
+            break
 
     for place_counter, sid in enumerate(ranked, 1):
         ts = shooter_totals.get(sid, 0)
-        if ts > 0:
-            place = sum(1 for s2 in ranked[:place_counter] if shooter_totals.get(s2, 0) > 0)
-        else:
-            place = 0  # 無分選手 place=0，前端會顯示「—」
+        place = place_counter  # 所有選手順序遞增，包括 0 分
         pct = round((ts / top_score) * 100, 2) if top_score > 0 and ts > 0 else 0
         s = shooter_map[sid]
         cursor.execute("""
@@ -198,18 +193,13 @@ def calculate_division_rankings(match_id, division):
             return (0 if shooter_totals.get(sid, 0) > 0 else 1, -(shooter_totals.get(sid, 0)))
         ranked_cat = sorted(sids, key=cat_sort)
         top_cat = 0
-        valid_cat = 0
         for sid in ranked_cat:
             if shooter_totals.get(sid, 0) > 0:
-                valid_cat += 1
-                if top_cat == 0:
-                    top_cat = shooter_totals[sid]
+                top_cat = shooter_totals[sid]
+                break
         for pc, sid in enumerate(ranked_cat, 1):
             ts = shooter_totals.get(sid, 0)
-            if ts > 0:
-                place_cat = sum(1 for s2 in ranked_cat[:pc] if shooter_totals.get(s2, 0) > 0)
-            else:
-                place_cat = 0  # 無分選手 place=0
+            place_cat = pc  # 所有選手順序遞增
             pct = round((ts / top_cat) * 100, 2) if top_cat > 0 and ts > 0 else 0
             s = shooter_map[sid]
             cursor.execute("""
@@ -232,18 +222,13 @@ def calculate_division_rankings(match_id, division):
             return (0 if shooter_totals.get(sid, 0) > 0 else 1, -(shooter_totals.get(sid, 0)))
         ranked_cls = sorted(sids, key=cls_sort)
         top_cls = 0
-        valid_cls = 0
         for sid in ranked_cls:
             if shooter_totals.get(sid, 0) > 0:
-                valid_cls += 1
-                if top_cls == 0:
-                    top_cls = shooter_totals[sid]
+                top_cls = shooter_totals[sid]
+                break
         for pc, sid in enumerate(ranked_cls, 1):
             ts = shooter_totals.get(sid, 0)
-            if ts > 0:
-                place_cls = sum(1 for s2 in ranked_cls[:pc] if shooter_totals.get(s2, 0) > 0)
-            else:
-                place_cls = 0  # 無分選手 place=0
+            place_cls = pc  # 所有選手順序遞增
             pct = round((ts / top_cls) * 100, 2) if top_cls > 0 and ts > 0 else 0
             s = shooter_map[sid]
             cursor.execute("""
@@ -405,10 +390,7 @@ def calculate_all_rankings(match_id):
                 break
         for place_counter, sid in enumerate(ranked, 1):
             ts = shooter_totals.get(sid, 0)
-            if ts > 0:
-                place = sum(1 for s2 in ranked[:place_counter] if shooter_totals.get(s2, 0) > 0)
-            else:
-                place = 0
+            place = place_counter  # 所有選手順序遞增
             pct = round((ts / top_score) * 100, 2) if top_score > 0 and ts > 0 else 0
             s = shooter_map[sid]
             cursor.execute(
@@ -432,10 +414,7 @@ def calculate_all_rankings(match_id):
                     break
             for pc, sid in enumerate(rc, 1):
                 ts = shooter_totals.get(sid, 0)
-                if ts > 0:
-                    place_cat = sum(1 for s2 in rc[:pc] if shooter_totals.get(s2, 0) > 0)
-                else:
-                    place_cat = 0
+                place_cat = pc  # 所有選手順序遞增
                 pct = round((ts / tc) * 100, 2) if tc > 0 and ts > 0 else 0
                 s = shooter_map[sid]
                 cursor.execute(
@@ -458,10 +437,7 @@ def calculate_all_rankings(match_id):
                     break
             for pc, sid in enumerate(rcls, 1):
                 ts = shooter_totals.get(sid, 0)
-                if ts > 0:
-                    place_cls = sum(1 for s2 in rcls[:pc] if shooter_totals.get(s2, 0) > 0)
-                else:
-                    place_cls = 0
+                place_cls = pc  # 所有選手順序遞增
                 pct = round((ts / tcls) * 100, 2) if tcls > 0 and ts > 0 else 0
                 s = shooter_map[sid]
                 cursor.execute(
