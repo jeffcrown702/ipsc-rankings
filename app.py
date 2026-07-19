@@ -556,3 +556,8 @@ if __name__ == "__main__":
         port = int(os.environ.get("PORT", API_PORT))
         import uvicorn
         uvicorn.run(app, host=API_HOST, port=port)
+
+# Vercel ASGI support
+if os.environ.get("VERCEL") == "1":
+    from a2wsgi import ASGIMiddleware
+    app = ASGIMiddleware(app)
