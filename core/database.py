@@ -25,9 +25,12 @@ def get_db():
         except ImportError:
             pass
         if 'psycopg2' in sys.modules:
-            conn = psycopg2.connect(DATABASE_URL)
-            conn.autocommit = False
-            return conn
+            try:
+                conn = psycopg2.connect(DATABASE_URL, connect_timeout=3)
+                conn.autocommit = False
+                return conn
+            except Exception:
+                pass
     import sqlite3
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
