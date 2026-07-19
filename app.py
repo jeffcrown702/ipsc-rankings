@@ -470,8 +470,7 @@ def run_scrape():
     
     scrape_status["running"] = True
     scrape_status["progress"] = "同步比賽列表..."
-    cfg = load_config()
-    base_url = cfg["base_url"]
+    base_url = BASE_URL
     
     try:
         # 同步比賽列表
