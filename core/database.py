@@ -41,11 +41,15 @@ def get_db():
 
 
 def get_cursor(db):
-    """獲取 cursor，PostgreSQL 用 RealDictCursor 支援 dict(row)，
-    同時自動轉換 SQL placeholder ? → %s 俾 PostgreSQL"""
+    """獲取 cursor，PostgreSQL 用 RealDictCursor + ?→%s auto-convert"""
     if USE_POSTGRES and DATABASE_URL:
         import psycopg2.extras
         cur = db.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        _orig = cur.execute
+        def _patched(sql, params=None):
+            sql = sql.replace('?', '%s')
+            return _orig(sql, params)
+        cur.execute = _patched
         return cur
     return db.cursor()
 
