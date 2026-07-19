@@ -17,9 +17,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-import os, sys, asyncio, aiohttp, threading, time
+import os, sys, time
 from datetime import datetime, timedelta
 from contextlib import contextmanager
+
+# Vercel 環境唔用 asyncio/aiohttp/threading
+_IS_VERCEL = os.environ.get("VERCEL") == "1"
+if not _IS_VERCEL:
+    import asyncio, aiohttp, threading
 
 sys.path.insert(0, os.path.dirname(__file__))
 from core.database import get_db, init_db
@@ -387,6 +392,8 @@ def trigger_scrape(match_id: int):
 
 
 def _auto_scrape_active_matches():
+    if _IS_VERCEL:
+        return
     """自動爬取所有進行中比賽（背景 cron 用）— 同步版本，跳過已完賽"""
     cfg = load_config()
     base_url = cfg["base_url"]
@@ -482,6 +489,11 @@ def run_scrape():
     thread.start()
     return {"status": "started", "message": "爬取已開始（異步）"}
 
+
+@app.get("/api/scrape/status")
+def get_status_vercel():
+    if _IS_VERCEL:
+        return {"running":False,"progress":"Vercel - 自動爬取已停用"}
 
 @app.get("/api/scrape/status")
 def get_scrape_status():
