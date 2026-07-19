@@ -18,7 +18,7 @@ if not USE_POSTGRES:
 
 def get_db():
     """獲取數據庫連接（自動選擇 SQLite 或 PostgreSQL）"""
-    if USE_POSTGRES:
+    if USE_POSTGRES and DATABASE_URL:
         try:
             import psycopg2
             import psycopg2.extras
