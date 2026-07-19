@@ -810,6 +810,85 @@ def scrape_results_match(match_id, base_url):
             total_shooters += div_shooters
             print(f"  [{div_name}] {div_shooters} shooters")
 
+        # 3. 爬取 Stage-level 數據
+        print(f"[RESULTS] 爬取 Stage 數據...")
+        total_stages = 0
+        for div_id in sorted(available_divs):
+            div_name = DIVISION_ID_MAP.get(div_id, f"Div{div_id}")
+            stage_url = f"{base_url}/results/{match_id}?division={div_id}&group=stage"
+            try:
+                resp = session.get(stage_url, timeout=15)
+                resp.raise_for_status()
+            except Exception as e:
+                continue
+
+            soup = BeautifulSoup(resp.text, "html.parser")
+            # Stage page: <h3>Open - Stage 01</h3> followed by <table>
+            stage_headers = soup.find_all("h3")
+            if not stage_headers:
+                continue
+
+            div_stages = 0
+            for h3 in stage_headers:
+                h3_text = h3.get_text(strip=True)
+                # Extract stage number from "Open - Stage 01" or "Standard - Stage 5"
+                sn_match = re.search(r"Stage\s+(\d+)", h3_text)
+                if not sn_match:
+                    continue
+                stage_num = int(sn_match.group(1))
+                stage_name = f"STAGE {stage_num}"
+
+                # Find the table after this h3
+                table = h3.find_next("table", class_="table")
+                if not table:
+                    continue
+                tbody = table.find("tbody")
+                if not tbody:
+                    continue
+
+                for tr in tbody.find_all("tr"):
+                    cells = tr.find_all("td")
+                    if len(cells) < 12:
+                        continue
+                    try:
+                        comp_num = int(cells[1].get_text(strip=True) or 0)
+                        points = int(cells[7].get_text(strip=True) or 0)
+                        stage_time = float(cells[8].get_text(strip=True) or 0)
+                        hit_factor = float(cells[9].get_text(strip=True) or 0)
+                        stage_score = float(cells[10].get_text(strip=True) or 0)
+                    except (ValueError, IndexError):
+                        continue
+
+                    # Find shooter_id
+                    cursor.execute(
+                        "SELECT id FROM shooters WHERE match_id=? AND competitor_number=?",
+                        (match_id, comp_num))
+                    srow = cursor.fetchone()
+                    if not srow:
+                        continue
+                    shooter_id = srow["id"]
+
+                    # Upsert stage_scores
+                    cursor.execute("""
+                        INSERT OR IGNORE INTO stage_scores
+                        (shooter_id, match_id, stage_number, stage_name, hit_factor,
+                         pts, time, stage_score)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (shooter_id, match_id, stage_num, stage_name,
+                          hit_factor, points, stage_time, stage_score))
+                    cursor.execute("""
+                        UPDATE stage_scores SET hit_factor=?, pts=?, time=?,
+                            stage_score=?, stage_name=?
+                        WHERE shooter_id=? AND stage_number=?
+                    """, (hit_factor, points, stage_time, stage_score,
+                          stage_name, shooter_id, stage_num))
+                    div_stages += 1
+
+            total_stages += div_stages
+            print(f"  [{div_name}] {div_stages} stage entries")
+
+        print(f"[RESULTS] Stage 數據: {total_stages} entries")
+
         conn.commit()
 
     except Exception as e:

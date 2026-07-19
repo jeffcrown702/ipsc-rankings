@@ -38,7 +38,8 @@ def calculate_division_rankings(match_id, division):
     placeholders = ",".join("?" for _ in shooter_ids)
     cursor.execute(f"""
         SELECT ss.shooter_id, ss.stage_number, ss.stage_name,
-               ss.hit_factor, ss.pts, ss.a, ss.c, ss.d, ss.mi, ss.ns, ss.pe, ss.time
+               ss.hit_factor, ss.pts, ss.a, ss.c, ss.d, ss.mi, ss.ns, ss.pe, ss.time,
+               ss.stage_score
         FROM stage_scores ss
         WHERE ss.shooter_id IN ({placeholders})
         ORDER BY ss.shooter_id, ss.stage_number
@@ -62,6 +63,7 @@ def calculate_division_rankings(match_id, division):
             "ns": row["ns"],
             "pe": row["pe"],
             "time": row["time"],
+            "stage_score": row["stage_score"],
         }
 
     # 3. 取得所有 Stage 編號
@@ -110,7 +112,11 @@ def calculate_division_rankings(match_id, division):
                     max_hf = stage_max_hf.get(stage_num, 1)
                     max_ss = stage_max_score.get(stage_num, 0)
                     hf = ss["hit_factor"]
-                    stage_score = (hf / max_hf) * max_ss if max_hf > 0 else 0
+                    # ★ 如有 paper target 數據 → 重新計算；否則用 source stage_score
+                    if max_ss > 0:
+                        stage_score = (hf / max_hf) * max_ss if max_hf > 0 else 0
+                    else:
+                        stage_score = ss.get("stage_score", 0) or 0
                     total += stage_score
 
                     # ★ 回寫 dict（供後續 stage ranking 使用）
@@ -315,7 +321,8 @@ def calculate_all_rankings(match_id):
         # 2. 取得全部 stage_scores
         cursor.execute(f"""
             SELECT ss.shooter_id, ss.stage_number, ss.stage_name,
-                   ss.hit_factor, ss.pts, ss.a, ss.c, ss.d, ss.mi, ss.ns, ss.pe, ss.time
+                   ss.hit_factor, ss.pts, ss.a, ss.c, ss.d, ss.mi, ss.ns, ss.pe, ss.time,
+                   ss.stage_score
             FROM stage_scores ss
             WHERE ss.shooter_id IN ({placeholders})
             ORDER BY ss.shooter_id, ss.stage_number
@@ -329,7 +336,7 @@ def calculate_all_rankings(match_id):
             if sid not in shooter_stages:
                 shooter_stages[sid] = {}
             shooter_stages[sid][row["stage_number"]] = {
-                k: row[k] for k in ["stage_name", "hit_factor", "pts", "a", "c", "d", "mi", "ns", "pe", "time"]
+                k: row[k] for k in ["stage_name", "hit_factor", "pts", "a", "c", "d", "mi", "ns", "pe", "time", "stage_score"]
             }
 
         # 4. 所有 Stage
@@ -367,7 +374,11 @@ def calculate_all_rankings(match_id):
                     if ss and ss["time"] > 0:
                         mhf = stage_max_hf.get(stage_num, 1)
                         mss = stage_max_score.get(stage_num, 0)
-                        stage_score = (ss["hit_factor"] / mhf) * mss if mhf > 0 else 0
+                        # ★ 如有 paper target 數據 → 重新計算；否則用 source stage_score
+                        if mss > 0:
+                            stage_score = (ss["hit_factor"] / mhf) * mss if mhf > 0 else 0
+                        else:
+                            stage_score = ss.get("stage_score", 0) or 0
                         total += stage_score
                         # ★ 回寫 dict（供後續 stage ranking 使用）
                         shooter_stages[sid][stage_num]["stage_score"] = stage_score
