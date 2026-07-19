@@ -473,9 +473,8 @@ def run_scrape():
     base_url = BASE_URL
     
     try:
-        # 同步比賽列表
-        matches = scraper_sync_matches(base_url)
-        scrape_status["progress"] = f"同步 {len(matches)} 場比賽"
+        # 唔同步比賽列表（Vercel 10 秒限制），直接爬已知 match ID
+        matches = []
         
         db = get_db()
         cursor = db.cursor() if not hasattr(get_db, '__wrapped__') else db.cursor()
@@ -495,6 +494,10 @@ def run_scrape():
         
         if not active:
             scrape_status["progress"] = "冇進行中比賽需要爬取"
+            # Vercel: 冇 match records，硬爬 match_id=37 (HKASA)
+            scrape_status["progress"] = "直接爬比賽 #37..."
+            _scrape_batch(37, base_url, {}, BATCH_SIZE)
+            calculate_all_rankings(37)
         else:
             total_msg = []
             for m in active:
