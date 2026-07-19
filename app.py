@@ -31,6 +31,7 @@ from core.database import get_db, init_db as _init_db
 from core.scraper import load_config, scrape_match, sync_matches as scraper_sync_matches, parse_matches, fetch_html, scrape_results_match
 from core.scoring_engine import calculate_all_rankings, calculate_division_rankings
 from core.config import API_HOST, API_PORT, DIVISIONS
+import core.config as cfg
 
 # Vercel-safe init
 try:
@@ -503,7 +504,7 @@ def run_scrape():
     
     scrape_status["running"] = True
     scrape_status["progress"] = "直接爬比賽 #37..."
-    base_url = BASE_URL
+    base_url = cfg.BASE_URL
     
     try:
         _scrape_batch(37, base_url, {}, 3)
@@ -521,7 +522,8 @@ def run_scrape():
 
 def _scrape_batch(match_id: int, base_url: str, cfg: dict, batch_size: int = 5):
     """只爬少量 shooter，適合 Vercel 10 秒限制"""
-    from core.scraper import fetch_html, parse_verify_page, BASE_URL
+    from core.scraper import parse_verify_page
+    import requests as _req
     
     db = get_db()
     cursor = db.cursor()
@@ -550,9 +552,13 @@ def _scrape_batch(match_id: int, base_url: str, cfg: dict, batch_size: int = 5):
     scraped = 0
     for comp_num in to_scrape:
         verify_url = f"{base_url}/portal/verify_competitor.php?comp_num={comp_num}"
-        html = fetch_html(verify_url)
+        try:
+            resp = _req.get(verify_url, timeout=10)
+            html = resp.text
+        except:
+            html = None
         if html:
-            result = parse_verify_page(html, comp_num, match_id)
+            result = parse_verify_page(html)
             if result and result["name"] != "Unknown":
                 _save_shooter_data(match_id, result)
                 scraped += 1
