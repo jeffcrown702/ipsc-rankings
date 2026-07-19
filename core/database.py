@@ -2,12 +2,22 @@
 import os
 
 # 自動檢測模式：Vercel 環境用 PostgreSQL，否則用 SQLite
-USE_POSTGRES = os.environ.get("VERCEL") == "1" or os.environ.get("DATABASE_URL") is not None
+USE_POSTGRES = any((
+    os.environ.get("VERCEL") == "1",
+    os.environ.get("DATABASE_URL") is not None,
+    os.environ.get("NEON_DATABASE_URL") is not None,
+    os.environ.get("POSTGRES_URL") is not None,
+    os.environ.get("POSTGRES_PRISMA_URL") is not None,
+))
 
 if USE_POSTGRES:
     import psycopg2
     import psycopg2.extras
-    DATABASE_URL = os.environ.get("DATABASE_URL", "")
+    DATABASE_URL = (os.environ.get("DATABASE_URL") or
+                    os.environ.get("NEON_DATABASE_URL") or
+                    os.environ.get("POSTGRES_URL") or
+                    os.environ.get("POSTGRES_PRISMA_URL") or
+                    "")
 else:
     import sqlite3
     from core.config import DB_PATH
