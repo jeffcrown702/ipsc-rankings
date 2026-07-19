@@ -9,5 +9,11 @@ jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
-      - name: Keep Vercel warm
-        run: curl -s --max-time 10 "https://ipsc-rankings.vercel.app/api/scrape/status" && curl -s --max-time 10 "https://ipsc-rankings.vercel.app/api/cron/keepwarm"
+      - name: Keep Vercel warm + scrape
+        run: |
+          curl -s --max-time 10 "https://ipsc-rankings.vercel.app/api/scrape/status"
+          curl -s --max-time 10 "https://ipsc-rankings.vercel.app/api/cron/keepwarm"
+          # 每 5 分鐘 scrape 一次
+          if [ $(( $(date +%M) % 5 )) -eq 0 ]; then
+            curl -s -X POST --max-time 15 "https://ipsc-rankings.vercel.app/api/scrape/run"
+          fi
