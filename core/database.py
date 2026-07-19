@@ -58,20 +58,12 @@ class _SQLiteCursor:
     def __getattr__(self, name):
         return getattr(self._cur, name)
 
-def get_cursor(db):
-    """獲取 cursor，SQLite 用 Row wrapper，PostgreSQL 用 RealDictCursor"""
-    if USE_POSTGRES and DATABASE_URL:
-        import psycopg2.extras
-        return db.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    return _SQLiteCursor(db)
-
-
 def get_cursor(conn):
-    """獲取 cursor（兼容 sqlite3 Row 和 psycopg2 DictCursor）"""
+    """獲取 cursor（兼容 sqlite3 Row wrapper 和 psycopg2 RealDictCursor）"""
     if USE_POSTGRES:
         import psycopg2.extras
         return conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    return conn.cursor()
+    return _SQLiteCursor(conn)
 
 
 def init_db():
