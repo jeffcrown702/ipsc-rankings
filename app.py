@@ -527,7 +527,7 @@ def _scrape_batch(match_id, base_url, cfg_dict, batch_size=5):
             SELECT COUNT(*) FROM stage_scores ss WHERE ss.shooter_id = s.id
         ) = 0
         ORDER BY s.competitor_number
-        LIMIT ?
+        LIMIT %s
     """, (match_id, batch_size))
     to_scrape = [r[0] for r in cursor.fetchall()]
     cursor.close()
@@ -574,7 +574,7 @@ def _save_shooter_data(match_id, data):
     else:
         cursor.execute("""
             INSERT INTO shooters (match_id, competitor_number, name, division, category, class, factor, region)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         """, (match_id, data["competitor_number"], data["name"], data["division"],
               data.get("category", ""), data.get("class", ""), data.get("factor", ""), data.get("region", "")))
         db.commit()
@@ -587,7 +587,7 @@ def _save_shooter_data(match_id, data):
     for stg in data.get("stages", []):
         cursor.execute("""
             INSERT INTO stage_scores (shooter_id, match_id, stage_number, pts, a, c, d, mi, ns, pe, time, hit_factor)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """, (shooter_id, match_id, stg["stage_num"], stg.get("pts", 0),
               stg.get("a", 0), stg.get("c", 0), stg.get("d", 0),
               stg.get("mi", 0), stg.get("ns", 0), stg.get("pe", 0),
@@ -634,7 +634,7 @@ def get_scrape_log():
         SELECT sl.*, m.name as match_name
         FROM scrape_log sl
         JOIN matches m ON sl.match_id = m.id
-        ORDER BY sl.id DESC LIMIT ?
+        ORDER BY sl.id DESC LIMIT %s
     """, (limit,))
     logs = [dict(r) for r in cursor.fetchall()]
     db.close()
