@@ -252,15 +252,15 @@
 
         function fmtScore(v) {
     v = parseFloat(v);
-    return (v && v > 0) ? v.toFixed(4) : '—';
+    return (!isNaN(v) && v >= 0) ? v.toFixed(4) : '—';
 }
 function fmtPct(v) {
     v = parseFloat(v);
-    return (v && v > 0) ? v.toFixed(2) + '%' : '—';
+    return (!isNaN(v) && v >= 0) ? v.toFixed(2) + '%' : '—';
 }
 function fmtHF(v) {
     v = parseFloat(v);
-    return (v && v > 0) ? v.toFixed(4) : '—';
+    return (!isNaN(v) && v >= 0) ? v.toFixed(4) : '—';
 }
 
 function shooterLink(name, compNum) {
