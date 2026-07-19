@@ -125,7 +125,7 @@ def get_matches():
     # 加 count
     for m in matches:
         db2 = get_db()
-        c = db2.cursor()
+        c = get_cursor(db2)
         c.execute("SELECT COUNT(*) as cnt FROM shooters WHERE match_id = ?", (m["id"],))
         row = c.fetchone()
         m["shooter_count"] = row["cnt"] if row else 0
@@ -443,7 +443,7 @@ def _auto_scrape_active_matches():
     base_url = cfg["base_url"]
 
     db = get_db()
-    c = db.cursor()
+    c = get_cursor(db)
     c.execute("SELECT id, name FROM matches WHERE is_completed = 0 ORDER BY id DESC")
     active = [dict(r) for r in c.fetchall()]
     db.close()
