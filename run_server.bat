@@ -1,12 +1,12 @@
 @echo off
 REM IPSC Rankings - Server Launcher
-REM 自動啟動 FastAPI server + localhost.run tunnel
+REM 自動啟動 FastAPI server + Cloudflare Tunnel
 
 cd /d E:\ctb988\ipsc-rankings
 
 :TUNNEL
-echo [%date% %time%] Starting localhost.run tunnel...
-start /B "" ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ServerAliveInterval=15 -R 80:localhost:8010 nokey@localhost.run
+echo [%date% %time%] Starting Cloudflare Tunnel...
+start /B "" .\cloudflared.exe tunnel --url http://localhost:8010
 
 echo [%date% %time%] Starting FastAPI server...
 python -u -c "
