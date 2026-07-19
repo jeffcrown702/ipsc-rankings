@@ -1,5 +1,5 @@
 """
-WSGI entry point for Vercel
+WSGI entry for Vercel — direct FastAPI, no module-level init_db
 """
 import sys, os
 sys.path.insert(0, os.path.dirname(__file__))
