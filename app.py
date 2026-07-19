@@ -32,7 +32,7 @@ if not _IS_VERCEL:
     import aiohttp
 
 sys.path.insert(0, os.path.dirname(__file__))
-from core.database import get_db, init_db as _init_db
+from core.database import get_db, get_cursor, init_db as _init_db
 from core.scraper import load_config, scrape_match, sync_matches as scraper_sync_matches, parse_matches, fetch_html, scrape_results_match
 from core.scoring_engine import calculate_all_rankings, calculate_division_rankings
 from core.config import API_HOST, API_PORT, DIVISIONS
@@ -113,7 +113,7 @@ def get_matches():
     """獲取比賽列表"""
     ensure_db()
     db = get_db()
-    cursor = db.cursor()
+    cursor = get_cursor(db)
     cursor.execute("""
         SELECT id, name, date, venue, level, is_completed, last_scraped
         FROM matches
@@ -139,7 +139,7 @@ def get_match(match_id):
     """獲取比賽詳情（含 divisions）"""
     ensure_db()
     db = get_db()
-    cursor = db.cursor()
+    cursor = get_cursor(db)
     cursor.execute("SELECT id, name, date, venue, level, is_completed FROM matches WHERE id = ?", (match_id,))
     row = cursor.fetchone()
     if not row:
@@ -179,7 +179,7 @@ def get_shooters(match_id):
     ensure_db()
     division = request.args.get("division")
     db = get_db()
-    cursor = db.cursor()
+    cursor = get_cursor(db)
     if division:
         cursor.execute("""
             SELECT id, competitor_number, name, division, class, factor, category,
@@ -219,7 +219,7 @@ def get_rankings(match_id):
         return jsonify({"error": "division parameter is required"}), 400
 
     db = get_db()
-    cursor = db.cursor()
+    cursor = get_cursor(db)
 
     if rank_type == "overall":
         cursor.execute("""
@@ -367,7 +367,7 @@ def get_stages(match_id):
     """獲取比賽的所有 Stage 名稱"""
     ensure_db()
     db = get_db()
-    cursor = db.cursor()
+    cursor = get_cursor(db)
     cursor.execute("""
         SELECT DISTINCT ss.stage_number, ss.stage_name
         FROM stage_scores ss
@@ -393,7 +393,7 @@ def trigger_scrape(match_id):
             return jsonify({"status": "running", "message": "爬取進行中，請稍後"})
 
         db = get_db()
-        cursor = db.cursor()
+        cursor = get_cursor(db)
         cursor.execute("SELECT id, is_completed FROM matches WHERE id = ?", (match_id,))
         row = cursor.fetchone()
         if not row:
@@ -508,7 +508,7 @@ def _scrape_batch(match_id, base_url, cfg_dict, batch_size=5):
     import requests as _req
 
     db = get_db()
-    cursor = db.cursor()
+    cursor = get_cursor(db)
 
     # 找未爬的 shooter
     cursor.execute("""
@@ -524,7 +524,7 @@ def _scrape_batch(match_id, base_url, cfg_dict, batch_size=5):
     cursor.close()
 
     if not to_scrape:
-        cursor = db.cursor()
+        cursor = get_cursor(db)
         cursor.execute("SELECT MAX(competitor_number) FROM shooters WHERE match_id = ?", (match_id,))
         max_num = cursor.fetchone()[0] or 0
         cursor.close()
@@ -553,7 +553,7 @@ def _save_shooter_data(match_id, data):
     from core.database import get_db, get_cursor
 
     db = get_db()
-    cursor = db.cursor()
+    cursor = get_cursor(db)
 
     # 檢查是否存在
     cursor.execute("SELECT id FROM shooters WHERE match_id = ? AND competitor_number = ?",
@@ -620,7 +620,7 @@ def get_scrape_log():
     ensure_db()
     limit = request.args.get("limit", 20, type=int)
     db = get_db()
-    cursor = db.cursor()
+    cursor = get_cursor(db)
     cursor.execute("""
         SELECT sl.*, m.name as match_name
         FROM scrape_log sl
@@ -666,7 +666,7 @@ def cron_scrape():
         parse_matches(html)
 
     db = get_db()
-    cursor = db.cursor()
+    cursor = get_cursor(db)
     cursor.execute("SELECT id FROM matches WHERE is_completed = 0")
     mids = [r[0] for r in cursor.fetchall()]
     cursor.close()
@@ -700,7 +700,7 @@ def import_data_post():
         return jsonify({"error": "invalid JSON"}), 400
 
     db = get_db()
-    cursor = db.cursor()
+    cursor = get_cursor(db)
     counts = {}
 
     for table in ['matches', 'shooters', 'stage_scores', 'rankings']:

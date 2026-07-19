@@ -37,6 +37,14 @@ def get_db():
     return conn
 
 
+def get_cursor(db):
+    """獲取 cursor，PostgreSQL 用 RealDictCursor 支援 dict(row)"""
+    if USE_POSTGRES and DATABASE_URL:
+        import psycopg2.extras
+        return db.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    return db.cursor()
+
+
 def get_cursor(conn):
     """獲取 cursor（兼容 sqlite3 Row 和 psycopg2 DictCursor）"""
     if USE_POSTGRES:
