@@ -1,0 +1,13 @@
+name: Keep Vercel Warm
+
+on:
+  schedule:
+    - cron: "*/3 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Keep Vercel warm
+        run: curl -s --max-time 10 "https://ipsc-rankings.vercel.app/api/scrape/status" && curl -s --max-time 10 "https://ipsc-rankings.vercel.app/api/cron/keepwarm"
