@@ -1,24 +1,17 @@
 """
-WSGI entry point for PythonAnywhere
-Simple synchronous wrapper around FastAPI
+WSGI entry point for Vercel
 """
 import sys, os
 sys.path.insert(0, os.path.dirname(__file__))
 os.chdir(os.path.dirname(__file__))
 
-from core.database import init_db
-init_db()
-
 from app import app
 
-# PythonAnywhere Apache expects 'application' as WSGI callable
-# FastAPI's app is ASGI, but we wrap it with a2wsgi
+# Vercel expects WSGI 'app' — wrap FastAPI ASGI with a2wsgi
 try:
     from a2wsgi import ASGIMiddleware
     application = ASGIMiddleware(app)
-    # Vercel expects 'app'
-    app = application
+    app = application  # Vercel expects 'app'
 except ImportError:
-    # Fallback: Starlette app works as ASGI only
-    # This won't work on PythonAnywhere but prevents import error
-    application = app
+    # Fallback — won't work on PythonAnywhere WSGI but ok for Vercel ASGI
+    pass
