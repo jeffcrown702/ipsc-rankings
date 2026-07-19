@@ -11,8 +11,6 @@ USE_POSTGRES = any((
 ))
 
 if USE_POSTGRES:
-    import psycopg2
-    import psycopg2.extras
     DATABASE_URL = (os.environ.get("DATABASE_URL") or
                     os.environ.get("NEON_DATABASE_URL") or
                     os.environ.get("POSTGRES_URL") or
@@ -26,6 +24,8 @@ else:
 def get_db():
     """獲取數據庫連接（自動選擇 SQLite 或 PostgreSQL）"""
     if USE_POSTGRES:
+        import psycopg2
+        import psycopg2.extras
         conn = psycopg2.connect(DATABASE_URL)
         conn.autocommit = False
         return conn
@@ -41,6 +41,7 @@ def get_db():
 def get_cursor(conn):
     """獲取 cursor（兼容 sqlite3 Row 和 psycopg2 DictCursor）"""
     if USE_POSTGRES:
+        import psycopg2.extras
         return conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     return conn.cursor()
 
