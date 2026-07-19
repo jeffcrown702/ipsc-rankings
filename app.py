@@ -463,59 +463,20 @@ def _auto_scrape_active_matches():
 
 @app.post("/api/scrape/run")
 def run_scrape():
-    """手動執行爬取所有比賽（同步版，每次爬 5 個 shooter，適合 Vercel 10 秒限制）"""
+    """Vercel: 同步爬 3 個 shooter（保證 10 秒內完成）"""
     global scrape_status
-    if scrape_status["running"]:
+    if scrape_status.get("running") and scrape_status["progress"] != "全部完成":
         return {"status": "running", "message": "爬取進行中，請稍後"}
     
     scrape_status["running"] = True
-    scrape_status["progress"] = "同步比賽列表..."
+    scrape_status["progress"] = "直接爬比賽 #37..."
     base_url = BASE_URL
     
     try:
-        # 唔同步比賽列表（Vercel 10 秒限制），直接爬已知 match ID
-        matches = []
-        
-        db = get_db()
-        cursor = db.cursor() if not hasattr(get_db, '__wrapped__') else db.cursor()
-        cursor.execute("SELECT id, name FROM matches WHERE is_completed = 0 ORDER BY id DESC")
-        active = [dict(r) for r in cursor.fetchall()]
-        
-        # 取目前已爬 shooter 數量
-        for m in active:
-            mid = m["id"]
-            c2 = db.cursor()
-            c2.execute("SELECT COUNT(*) FROM shooters WHERE match_id = ? AND stage_scores_count > 0", (mid,))
-            scraped_count = c2.fetchone()[0]
-            m["scraped"] = scraped_count
-            c2.close()
-        
-        db.close()
-        
-        if not active:
-            scrape_status["progress"] = "冇進行中比賽需要爬取"
-            # Vercel: 冇 match records，硬爬 match_id=37 (HKASA)
-            scrape_status["progress"] = "直接爬比賽 #37..."
-            _scrape_batch(37, base_url, {}, BATCH_SIZE)
-            calculate_all_rankings(37)
-        else:
-            total_msg = []
-            for m in active:
-                total_msg.append(f"#{m['id']}(已爬{m['scraped']}人)")
-            scrape_status["progress"] = f"進行中: {', '.join(total_msg)}"
-            
-            # 逐場爬，每次最多 5 個 shooter（Vercel 10 秒限制）
-            BATCH_SIZE = 5
-            for m_dict in active:
-                mid = m_dict["id"]
-                scrape_status["progress"] = f"比賽 #{mid}: 爬取下一批射手..."
-                scrape_status["last_run"] = datetime.now().isoformat()
-                
-                # 自訂批次爬取
-                _scrape_batch(mid, base_url, cfg, BATCH_SIZE)
-                calculate_all_rankings(mid)
-            
-            scrape_status["progress"] = "全部完成"
+        _scrape_batch(37, base_url, {}, 3)
+        scrape_status["progress"] = "爬取完成，計算排名..."
+        calculate_all_rankings(37)
+        scrape_status["progress"] = "全部完成"
     except Exception as e:
         scrape_status["progress"] = f"錯誤: {e}"
         import traceback; traceback.print_exc()
