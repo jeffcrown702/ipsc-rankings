@@ -22,7 +22,10 @@ DIVISIONS = [
 ]
 
 # 數據庫
-DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "ipsc_rankings.db")
+# 數據庫路徑（Vercel 用 /tmp）
+_VERCEL = os.environ.get("VERCEL") == "1"
+DB_PATH = (os.path.join("/tmp", "ipsc_rankings.db") if _VERCEL
+           else os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "ipsc_rankings.db"))
 
 # FastAPI
 API_HOST = "0.0.0.0"
