@@ -71,7 +71,7 @@ def _should_auto_scrape(match_id, cooldown_sec=120):
 
 @app.on_event("startup")
 def startup():
-    init_db()
+    _init_db()
     if not _IS_VERCEL:
         # 定時任務：每 5 分鐘自動爬取進行中比賽
         def cron_loop():

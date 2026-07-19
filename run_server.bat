@@ -6,7 +6,7 @@ cd /d E:\ctb988\ipsc-rankings
 
 :TUNNEL
 echo [%date% %time%] Starting Cloudflare Tunnel...
-start /B "" .\cloudflared.exe tunnel --url http://localhost:8010
+start /B "" "%TEMP%\cloudflared.exe" tunnel --url http://localhost:8010
 
 echo [%date% %time%] Starting FastAPI server...
 python -u -c "
