@@ -17,8 +17,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-import uvicorn
-
 import os, sys, asyncio, aiohttp, threading, time
 from datetime import datetime, timedelta
 from contextlib import contextmanager
@@ -542,5 +540,7 @@ def match_page(match_id: int):
 
 if __name__ == "__main__":
     init_db()
-    port = int(os.environ.get("PORT", API_PORT))
-    uvicorn.run(app, host=API_HOST, port=port)
+    if os.environ.get("VERCEL") != "1":
+        port = int(os.environ.get("PORT", API_PORT))
+        import uvicorn
+        uvicorn.run(app, host=API_HOST, port=port)
