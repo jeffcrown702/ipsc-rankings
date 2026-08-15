@@ -520,17 +520,18 @@ def run_scrape():
     except Exception as e:
         scrape_status["progress"] = f"同步失敗: {e}"
 
-    # 2. 爬未完成嘅比賽
+    # 2. 爬未完成嘅比賽 — 每次 call 只爬 1 場、最多 2 個 shooter（10 秒內完成）
     try:
         db = get_db()
         cursor = get_cursor(db)
-        cursor.execute("SELECT id FROM matches WHERE is_completed = 0 ORDER BY id DESC LIMIT 3")
+        cursor.execute("SELECT id FROM matches WHERE is_completed = 0 ORDER BY id DESC LIMIT 1")
         mids = [r["id"] for r in cursor.fetchall()]
         db.close()
         for mid in mids:
-            _scrape_batch(mid, base_url, {}, _BATCH_SIZE)
-            calculate_all_rankings(mid)
-        scrape_status["progress"] = f"已爬 {len(mids)} 場比賽並計算排名"
+            n = _scrape_batch(mid, base_url, {}, min(_BATCH_SIZE, 2))
+            if n > 0:
+                calculate_all_rankings(mid)
+            scrape_status["progress"] = f"已爬 match #{mid} 共 {n} 新射手"
     except Exception as e:
         scrape_status["progress"] = f"爬取錯誤: {e}"
         traceback.print_exc()
@@ -581,6 +582,8 @@ def _scrape_batch(match_id, base_url, cfg_dict, batch_size=5):
         if html:
             result = parse_verify_page(html)
             if result and result["name"] != "Unknown":
+                result["competitor_number"] = comp_num
+                result["region"] = "HKG"
                 _save_shooter_data(match_id, result)
                 scraped += 1
 
