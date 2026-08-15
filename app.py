@@ -563,8 +563,10 @@ def _scrape_batch(match_id, base_url, cfg_dict, batch_size=5):
 
     if not to_scrape:
         cursor = get_cursor(db)
-        cursor.execute("SELECT MAX(competitor_number) FROM shooters WHERE match_id = %s", (match_id,))
-        max_num = cursor.fetchone()[0] or 0
+        cursor.execute("SELECT MAX(competitor_number) as mn FROM shooters WHERE match_id = %s", (match_id,))
+        row = cursor.fetchone()
+        max_num = row["mn"] if isinstance(row, dict) else row[0]
+        max_num = max_num or 0
         cursor.close()
         to_scrape = list(range(max_num + 1, min(max_num + 1 + batch_size, 220)))
 

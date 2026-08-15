@@ -8,21 +8,21 @@
 5. Total Score = Σ 所有 Stage_Score
 """
 import sqlite3
-from core.database import get_db
+from core.database import get_db, get_cursor
 from core.config import DIVISIONS, CATEGORIES, CLASSES
 
 
 def calculate_division_rankings(match_id, division):
     """為指定比賽 + Division 計算所有排名"""
     db = get_db()
-    cursor = db.cursor()
+    cursor = get_cursor(db)
 
     # 1. 取得該 Division 所有射手
     cursor.execute("""
         SELECT s.id, s.competitor_number, s.name, s.division,
                s.class, s.factor, s.category, s.region, s.total_score
         FROM shooters s
-        WHERE s.match_id = ? AND s.division = ?
+        WHERE s.match_id = %s AND s.division = %s
         ORDER BY s.competitor_number
     """, (match_id, division))
     shooters = cursor.fetchall()
@@ -35,7 +35,7 @@ def calculate_division_rankings(match_id, division):
     print(f"[RANK] {division}: {len(shooters)} 位射手")
 
     # 2. 取得所有射手嘅 Stage 成績
-    placeholders = ",".join("?" for _ in shooter_ids)
+    placeholders = ",".join("%s" for _ in shooter_ids)
     cursor.execute(f"""
         SELECT ss.shooter_id, ss.stage_number, ss.stage_name,
                ss.hit_factor, ss.pts, ss.a, ss.c, ss.d, ss.mi, ss.ns, ss.pe, ss.time,
@@ -124,8 +124,8 @@ def calculate_division_rankings(match_id, division):
 
                     cursor.execute("""
                         UPDATE stage_scores
-                        SET stage_score = ?
-                        WHERE shooter_id = ? AND stage_number = ?
+                        SET stage_score = %s
+                        WHERE shooter_id = %s AND stage_number = %s
                     """, (round(stage_score, 4), sid, stage_num))
                 else:
                     if stage_num in stages:
@@ -135,8 +135,8 @@ def calculate_division_rankings(match_id, division):
 
             cursor.execute("""
                 UPDATE shooters
-                SET total_score = ?, updated_at = datetime('now')
-                WHERE id = ?
+                SET total_score = %s, updated_at = datetime('now')
+                WHERE id = %s
             """, (round(total, 4), sid))
     else:
         # 冇 stage 數據：直接用 shooters.total_score（e.g. completed match 已有 results）
@@ -149,7 +149,7 @@ def calculate_division_rankings(match_id, division):
     # 6. 清除舊排名
     cursor.execute("""
         DELETE FROM rankings
-        WHERE match_id = ? AND division = ?
+        WHERE match_id = %s AND division = %s
     """, (match_id, division))
 
     # 建立射手查找表
@@ -176,7 +176,7 @@ def calculate_division_rankings(match_id, division):
             INSERT OR REPLACE INTO rankings
             (match_id, division, rank_type, group_key, competitor_number,
              place, total_score, score_percent, calculated_at)
-            VALUES (?, ?, 'overall', '', ?, ?, ?, ?, datetime('now'))
+            VALUES (%s, %s, 'overall', '', %s, %s, %s, %s, datetime('now'))
         """, (match_id, division, s["competitor_number"], place, ts, pct))
 
     # ===== CATEGORY 排名 =====
@@ -206,7 +206,7 @@ def calculate_division_rankings(match_id, division):
                 INSERT OR REPLACE INTO rankings
                 (match_id, division, rank_type, group_key, competitor_number,
                  place, total_score, score_percent, calculated_at)
-                VALUES (?, ?, 'category', ?, ?, ?, ?, ?, datetime('now'))
+                VALUES (%s, %s, 'category', %s, %s, %s, %s, %s, datetime('now'))
             """, (match_id, division, cat, s["competitor_number"], place_cat, ts, pct))
 
     # ===== CLASS 排名 (score=0 排最後) =====
@@ -235,7 +235,7 @@ def calculate_division_rankings(match_id, division):
                 INSERT OR REPLACE INTO rankings
                 (match_id, division, rank_type, group_key, competitor_number,
                  place, total_score, score_percent, calculated_at)
-                VALUES (?, ?, 'class', ?, ?, ?, ?, ?, datetime('now'))
+                VALUES (%s, %s, 'class', %s, %s, %s, %s, %s, datetime('now'))
             """, (match_id, division, cls, s["competitor_number"], place_cls, ts, pct))
 
     # ===== STAGE 排名 =====
@@ -257,7 +257,7 @@ def calculate_division_rankings(match_id, division):
                 INSERT OR REPLACE INTO rankings
                 (match_id, division, rank_type, group_key, competitor_number,
                  place, total_score, score_percent, calculated_at)
-                VALUES (?, ?, 'stage', ?, ?, ?, ?, ?, datetime('now'))
+                VALUES (%s, %s, 'stage', %s, %s, %s, %s, %s, datetime('now'))
             """, (match_id, division, stage_key, s["competitor_number"],
                   place, round(ss_score, 4), round(hf, 4)))
 
@@ -269,10 +269,10 @@ def calculate_division_rankings(match_id, division):
 def calculate_all_rankings(match_id):
     """為比賽中所有有數據嘅 Division 計算排名，另加 *ALL* 跨組排名"""
     db = get_db()
-    cursor = db.cursor()
+    cursor = get_cursor(db)
     cursor.execute("""
         SELECT DISTINCT division FROM shooters
-        WHERE match_id = ?
+        WHERE match_id = %s
           AND division IS NOT NULL
           AND division != ''
         ORDER BY division
@@ -286,14 +286,14 @@ def calculate_all_rankings(match_id):
     # === *ALL* 跨 Division 排名 ===
     division = "*ALL*"
     db = get_db()
-    cursor = db.cursor()
+    cursor = get_cursor(db)
 
     # 1. 取得全部射手
     cursor.execute("""
         SELECT s.id, s.competitor_number, s.name, s.division,
                s.class, s.factor, s.category, s.region, s.total_score
         FROM shooters s
-        WHERE s.match_id = ?
+        WHERE s.match_id = %s
         ORDER BY s.competitor_number
     """, (match_id,))
     shooters = cursor.fetchall()
@@ -301,7 +301,7 @@ def calculate_all_rankings(match_id):
     if shooters:
         shooter_ids = [s["id"] for s in shooters]
         shooter_map = {s["id"]: s for s in shooters}
-        placeholders = ",".join("?" for _ in shooter_ids)
+        placeholders = ",".join("%s" for _ in shooter_ids)
 
         # 2. 取得全部 stage_scores
         cursor.execute(f"""
@@ -377,7 +377,7 @@ def calculate_all_rankings(match_id):
                 shooter_totals[s["id"]] = float(s["total_score"] or 0)
 
         # 7. 清除舊 *ALL* 排名
-        cursor.execute("DELETE FROM rankings WHERE match_id = ? AND division = ?", (match_id, division))
+        cursor.execute("DELETE FROM rankings WHERE match_id = %s AND division = %s", (match_id, division))
 
         # === OVERALL ===
         def all_sort_key(sid):
@@ -394,7 +394,7 @@ def calculate_all_rankings(match_id):
             pct = round((ts / top_score) * 100, 2) if top_score > 0 and ts > 0 else 0
             s = shooter_map[sid]
             cursor.execute(
-                "INSERT OR REPLACE INTO rankings (match_id, division, rank_type, group_key, competitor_number, place, total_score, score_percent) VALUES (?,?,?,?,?,?,?,?)",
+                "INSERT OR REPLACE INTO rankings (match_id, division, rank_type, group_key, competitor_number, place, total_score, score_percent) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
                 (match_id, division, "overall", None, s["competitor_number"], place, ts, pct))
 
         # === CATEGORY ===
@@ -418,7 +418,7 @@ def calculate_all_rankings(match_id):
                 pct = round((ts / tc) * 100, 2) if tc > 0 and ts > 0 else 0
                 s = shooter_map[sid]
                 cursor.execute(
-                    "INSERT OR REPLACE INTO rankings (match_id, division, rank_type, group_key, competitor_number, place, total_score, score_percent) VALUES (?,?,?,?,?,?,?,?)",
+                    "INSERT OR REPLACE INTO rankings (match_id, division, rank_type, group_key, competitor_number, place, total_score, score_percent) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
                     (match_id, division, "category", cat, s["competitor_number"], place_cat, ts, pct))
 
         # === CLASS ===
@@ -441,7 +441,7 @@ def calculate_all_rankings(match_id):
                 pct = round((ts / tcls) * 100, 2) if tcls > 0 and ts > 0 else 0
                 s = shooter_map[sid]
                 cursor.execute(
-                    "INSERT OR REPLACE INTO rankings (match_id, division, rank_type, group_key, competitor_number, place, total_score, score_percent) VALUES (?,?,?,?,?,?,?,?)",
+                    "INSERT OR REPLACE INTO rankings (match_id, division, rank_type, group_key, competitor_number, place, total_score, score_percent) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
                     (match_id, division, "class", cls, s["competitor_number"], place_cls, ts, pct))
 
         # === STAGE ===
@@ -455,7 +455,7 @@ def calculate_all_rankings(match_id):
             for place, (sid, hf, ss_score) in enumerate(stage_data, 1):
                 s = shooter_map[sid]
                 cursor.execute(
-                    "INSERT OR REPLACE INTO rankings (match_id, division, rank_type, group_key, competitor_number, place, total_score, score_percent) VALUES (?,?,?,?,?,?,?,?)",
+                    "INSERT OR REPLACE INTO rankings (match_id, division, rank_type, group_key, competitor_number, place, total_score, score_percent) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
                     (match_id, division, "stage", stage_key, s["competitor_number"], place, round(ss_score, 4), round(hf, 4)))
 
     db.commit()
