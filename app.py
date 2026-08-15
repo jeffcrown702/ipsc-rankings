@@ -489,21 +489,50 @@ def _auto_scrape_active_matches():
 
 @app.route("/api/scrape/run", methods=["POST"])
 def run_scrape():
-    """Vercel: 同步爬 _BATCH_SIZE 個 shooter（保證 10 秒內完成）"""
+    """Vercel: 先 sync 新比賽列表，再爬 active matches（保證 10 秒內完成）"""
     global scrape_status
+    import requests as _req
     ensure_db()
 
     scrape_status["running"] = True
-    scrape_status["progress"] = "直接爬比賽 #37..."
+    scrape_status["progress"] = "同步比賽列表..."
     base_url = cfg.BASE_URL
 
+    # 1. Sync 比賽列表 — 偵測新比賽
     try:
-        _scrape_batch(37, base_url, {}, _BATCH_SIZE)
-        scrape_status["progress"] = "爬取完成，計算排名..."
-        calculate_all_rankings(37)
-        scrape_status["progress"] = "全部完成"
+        resp = _req.get(base_url, timeout=8, headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        })
+        html = resp.text
+        from core.scraper import parse_matches
+        for m in parse_matches(html):
+            db = get_db()
+            c = get_cursor(db)
+            c.execute("""
+                INSERT INTO matches (id, name, date, venue, level, is_completed)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                ON CONFLICT (id) DO UPDATE SET name=EXCLUDED.name,
+                    date=EXCLUDED.date, venue=EXCLUDED.venue, level=EXCLUDED.level
+            """, (m["id"], m["name"], m.get("date", ""), m.get("venue", ""), m.get("level", ""), 0))
+            db.commit()
+            db.close()
+        scrape_status["progress"] = "比賽列表已同步，爬取最新比賽..."
     except Exception as e:
-        scrape_status["progress"] = f"錯誤: {e}"
+        scrape_status["progress"] = f"同步失敗: {e}"
+
+    # 2. 爬未完成嘅比賽
+    try:
+        db = get_db()
+        cursor = get_cursor(db)
+        cursor.execute("SELECT id FROM matches WHERE is_completed = 0 ORDER BY id DESC LIMIT 3")
+        mids = [r["id"] for r in cursor.fetchall()]
+        db.close()
+        for mid in mids:
+            _scrape_batch(mid, base_url, {}, _BATCH_SIZE)
+            calculate_all_rankings(mid)
+        scrape_status["progress"] = f"已爬 {len(mids)} 場比賽並計算排名"
+    except Exception as e:
+        scrape_status["progress"] = f"爬取錯誤: {e}"
         traceback.print_exc()
     finally:
         scrape_status["running"] = False
