@@ -601,21 +601,23 @@ def _save_shooter_data(match_id, data):
     existing = cursor.fetchone()
 
     if existing:
-        shooter_id = existing[0]
+        shooter_id = existing["id"] if isinstance(existing, dict) else existing[0]
     else:
         cursor.execute("""
             INSERT INTO shooters (match_id, competitor_number, name, division, category, class, factor, region)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id
         """, (match_id, data["competitor_number"], data["name"], data["division"],
               data.get("category", ""), data.get("class", ""), data.get("factor", ""), data.get("region", "")))
+        row = cursor.fetchone()
+        shooter_id = row["id"] if isinstance(row, dict) else row[0]
         db.commit()
-        shooter_id = cursor.lastrowid
 
     # 清空舊 stage scores
     cursor.execute("DELETE FROM stage_scores WHERE shooter_id = %s", (shooter_id,))
 
     # 插入新 stage scores
-    for stg in data.get("stages", []):
+    for stg in (data.get("stages") or []):
         cursor.execute("""
             INSERT INTO stage_scores (shooter_id, match_id, stage_number, pts, a, c, d, mi, ns, pe, time, hit_factor)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
