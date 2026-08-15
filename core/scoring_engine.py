@@ -17,7 +17,7 @@ def calculate_division_rankings(match_id, division):
     db = get_db()
     cursor = get_cursor(db)
 
-    # 0. 清除該 Division 舊 rankings（避免 INSERT OR REPLACE 問題）
+    # 0. 清除該 Division 舊 rankings（避免重複插入）
     cursor.execute("DELETE FROM rankings WHERE match_id = %s AND division = %s", (match_id, division))
     db.commit()
 
