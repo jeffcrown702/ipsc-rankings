@@ -572,7 +572,7 @@ def _scrape_batch(match_id, base_url, cfg_dict, batch_size=5):
 
     scraped = 0
     for comp_num in to_scrape:
-        verify_url = f"{base_url}/portal/verify_competitor.php?comp_num={comp_num}"
+        verify_url = f"{base_url}/portal/verify/{match_id}?shooter={comp_num}"
         try:
             resp = _req.get(verify_url, timeout=10)
             html = resp.text
