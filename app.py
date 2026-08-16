@@ -717,7 +717,7 @@ def _save_shooter_data(match_id, data):
         cursor.execute("""
             INSERT INTO stage_scores (shooter_id, match_id, stage_number, pts, a, c, d, mi, ns, pe, time, hit_factor)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """, (shooter_id, match_id, stg["stage_num"], stg.get("pts", 0),
+        """, (shooter_id, match_id, stg.get("stage_number") or stg.get("stage_num", 0), stg.get("pts", 0),
               stg.get("a", 0), stg.get("c", 0), stg.get("d", 0),
               stg.get("mi", 0), stg.get("ns", 0), stg.get("pe", 0),
               stg.get("time", 0), stg.get("hit_factor", 0)))
