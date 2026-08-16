@@ -49,6 +49,9 @@ class _SQLiteCursor:
         if params is None:
             return self._cur.execute(sql)
         return self._cur.execute(sql, params)
+    def executemany(self, sql, seq):
+        sql = sql.replace('%s', '?')
+        return self._cur.executemany(sql, seq)
     def fetchall(self):
         return self._cur.fetchall()
     def fetchone(self):

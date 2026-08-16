@@ -394,16 +394,19 @@ def calculate_all_rankings(match_id):
             if shooter_totals.get(sid, 0) > 0:
                 top_score = shooter_totals[sid]
                 break
+        overall_rows = []
         for place_counter, sid in enumerate(ranked, 1):
             ts = shooter_totals.get(sid, 0)
-            place = place_counter  # 所有選手順序遞增
+            place = place_counter
             pct = round((ts / top_score) * 100, 2) if top_score > 0 and ts > 0 else 0
             s = shooter_map[sid]
-            cursor.execute(
-                "INSERT INTO rankings (match_id, division, rank_type, group_key, competitor_number, place, total_score, score_percent) VALUES (%s,%s,%s,%s,%s,%s,%s,%s) "
-                "ON CONFLICT (match_id, division, rank_type, group_key, competitor_number) "
-                "DO UPDATE SET place=EXCLUDED.place, total_score=EXCLUDED.total_score, score_percent=EXCLUDED.score_percent",
-                (match_id, division, "overall", "", s["competitor_number"], place, ts, pct))
+            overall_rows.append((match_id, division, "overall", "", s["competitor_number"], place, ts, pct))
+        cursor.executemany(
+            "INSERT INTO rankings (match_id, division, rank_type, group_key, competitor_number, place, total_score, score_percent) VALUES (%s,%s,%s,%s,%s,%s,%s,%s) "
+            "ON CONFLICT (match_id, division, rank_type, group_key, competitor_number) "
+            "DO UPDATE SET place=EXCLUDED.place, total_score=EXCLUDED.total_score, score_percent=EXCLUDED.score_percent",
+            overall_rows
+        )
 
         # === CATEGORY ===
         cat_shooters = {}
@@ -411,6 +414,7 @@ def calculate_all_rankings(match_id):
             cat = s["category"].strip() if s["category"] else ""
             if cat:
                 cat_shooters.setdefault(cat, []).append(s["id"])
+        cat_rows = []
         for cat, sids in cat_shooters.items():
             def cat_sort(sid):
                 return (0 if shooter_totals.get(sid, 0) > 0 else 1, -(shooter_totals.get(sid, 0)))
@@ -422,18 +426,24 @@ def calculate_all_rankings(match_id):
                     break
             for pc, sid in enumerate(rc, 1):
                 ts = shooter_totals.get(sid, 0)
-                place_cat = pc  # 所有選手順序遞增
+                place_cat = pc
                 pct = round((ts / tc) * 100, 2) if tc > 0 and ts > 0 else 0
                 s = shooter_map[sid]
-                cursor.execute(
-                    "INSERT INTO rankings (match_id, division, rank_type, group_key, competitor_number, place, total_score, score_percent) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
-                    (match_id, division, "category", cat, s["competitor_number"], place_cat, ts, pct))
+                cat_rows.append((match_id, division, "category", cat, s["competitor_number"], place_cat, ts, pct))
+        if cat_rows:
+            cursor.executemany(
+                "INSERT INTO rankings (match_id, division, rank_type, group_key, competitor_number, place, total_score, score_percent) VALUES (%s,%s,%s,%s,%s,%s,%s,%s) "
+                "ON CONFLICT (match_id, division, rank_type, group_key, competitor_number) "
+                "DO UPDATE SET place=EXCLUDED.place, total_score=EXCLUDED.total_score, score_percent=EXCLUDED.score_percent",
+                cat_rows
+            )
 
         # === CLASS ===
         cls_shooters = {}
         for s in shooters:
             cls = s["class"].strip() if s["class"] else "U"
             cls_shooters.setdefault(cls, []).append(s["id"])
+        cls_rows = []
         for cls, sids in cls_shooters.items():
             def cls_sort(sid):
                 return (0 if shooter_totals.get(sid, 0) > 0 else 1, -(shooter_totals.get(sid, 0)))
@@ -445,14 +455,20 @@ def calculate_all_rankings(match_id):
                     break
             for pc, sid in enumerate(rcls, 1):
                 ts = shooter_totals.get(sid, 0)
-                place_cls = pc  # 所有選手順序遞增
+                place_cls = pc
                 pct = round((ts / tcls) * 100, 2) if tcls > 0 and ts > 0 else 0
                 s = shooter_map[sid]
-                cursor.execute(
-                    "INSERT INTO rankings (match_id, division, rank_type, group_key, competitor_number, place, total_score, score_percent) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
-                    (match_id, division, "class", cls, s["competitor_number"], place_cls, ts, pct))
+                cls_rows.append((match_id, division, "class", cls, s["competitor_number"], place_cls, ts, pct))
+        if cls_rows:
+            cursor.executemany(
+                "INSERT INTO rankings (match_id, division, rank_type, group_key, competitor_number, place, total_score, score_percent) VALUES (%s,%s,%s,%s,%s,%s,%s,%s) "
+                "ON CONFLICT (match_id, division, rank_type, group_key, competitor_number) "
+                "DO UPDATE SET place=EXCLUDED.place, total_score=EXCLUDED.total_score, score_percent=EXCLUDED.score_percent",
+                cls_rows
+            )
 
         # === STAGE ===
+        stage_rows = []
         for stage_num in all_stages:
             stage_key = f"STAGE {stage_num:02d}"
             stage_data = [(sid,
@@ -462,9 +478,14 @@ def calculate_all_rankings(match_id):
             stage_data.sort(key=lambda x: x[1], reverse=True)
             for place, (sid, hf, ss_score) in enumerate(stage_data, 1):
                 s = shooter_map[sid]
-                cursor.execute(
-                    "INSERT INTO rankings (match_id, division, rank_type, group_key, competitor_number, place, total_score, score_percent) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
-                    (match_id, division, "stage", stage_key, s["competitor_number"], place, round(ss_score, 4), round(hf, 4)))
+                stage_rows.append((match_id, division, "stage", stage_key, s["competitor_number"], place, round(ss_score, 4), round(hf, 4)))
+        if stage_rows:
+            cursor.executemany(
+                "INSERT INTO rankings (match_id, division, rank_type, group_key, competitor_number, place, total_score, score_percent) VALUES (%s,%s,%s,%s,%s,%s,%s,%s) "
+                "ON CONFLICT (match_id, division, rank_type, group_key, competitor_number) "
+                "DO UPDATE SET place=EXCLUDED.place, total_score=EXCLUDED.total_score, score_percent=EXCLUDED.score_percent",
+                stage_rows
+            )
 
     db.commit()
     db.close()
