@@ -181,6 +181,8 @@ def calculate_division_rankings(match_id, division):
             (match_id, division, rank_type, group_key, competitor_number,
              place, total_score, score_percent, calculated_at)
             VALUES (%s, %s, 'overall', '', %s, %s, %s, %s, NOW())
+            ON CONFLICT (match_id, division, rank_type, group_key, competitor_number)
+            DO UPDATE SET place=EXCLUDED.place, total_score=EXCLUDED.total_score, score_percent=EXCLUDED.score_percent
         """, (match_id, division, s["competitor_number"], place, ts, pct))
 
     # ===== CATEGORY 排名 =====
@@ -211,6 +213,8 @@ def calculate_division_rankings(match_id, division):
                 (match_id, division, rank_type, group_key, competitor_number,
                  place, total_score, score_percent, calculated_at)
                 VALUES (%s, %s, 'category', %s, %s, %s, %s, %s, NOW())
+                ON CONFLICT (match_id, division, rank_type, group_key, competitor_number)
+                DO UPDATE SET place=EXCLUDED.place, total_score=EXCLUDED.total_score, score_percent=EXCLUDED.score_percent
             """, (match_id, division, cat, s["competitor_number"], place_cat, ts, pct))
 
     # ===== CLASS 排名 (score=0 排最後) =====
@@ -240,6 +244,8 @@ def calculate_division_rankings(match_id, division):
                 (match_id, division, rank_type, group_key, competitor_number,
                  place, total_score, score_percent, calculated_at)
                 VALUES (%s, %s, 'class', %s, %s, %s, %s, %s, NOW())
+                ON CONFLICT (match_id, division, rank_type, group_key, competitor_number)
+                DO UPDATE SET place=EXCLUDED.place, total_score=EXCLUDED.total_score, score_percent=EXCLUDED.score_percent
             """, (match_id, division, cls, s["competitor_number"], place_cls, ts, pct))
 
     # ===== STAGE 排名 =====
