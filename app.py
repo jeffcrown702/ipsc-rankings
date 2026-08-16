@@ -574,22 +574,10 @@ def scrape_step():
 
 @app.route("/api/scrape/rank", methods=["POST"])
 def scrape_rank():
-    """分步重算排名 — 單獨 recalc 最大未完成比賽（每分鐘 cron 隔幾次 call 先 recalc）"""
-    ensure_db()
-    db = get_db()
-    cursor = get_cursor(db)
-    cursor.execute("SELECT id FROM matches WHERE is_completed = 0 ORDER BY id DESC LIMIT 1")
-    row = cursor.fetchone()
-    db.close()
-    if not row:
-        return jsonify({"status": "done", "match": None})
-    mid = row["id"]
-    from core.scoring_engine import calculate_all_rankings
-    try:
-        calculate_all_rankings(mid)
-        return jsonify({"status": "ok", "match": mid, "recalculated": True})
-    except Exception as e:
-        return jsonify({"status": "error", "match": mid, "error": str(e)[:80]}), 500
+    """排名重算 — Vercel 10 秒 timeout 唔夠 recalc，停用以免同本地 cron 並行撞。
+    完整 recalc 由你部電腦 cron (IPSC Neon Scraper recurring) 每次 run 負責。"""
+    return jsonify({"status": "disabled", "reason": "recalc 由本地 cron 處理",
+                    "note": "Vercel 10 秒唔夠 recalc 全域排名"})
 
 
 @app.route("/api/scrape/run", methods=["POST"])

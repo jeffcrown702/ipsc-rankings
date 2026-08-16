@@ -12,9 +12,5 @@ jobs:
       - name: Keep Vercel warm + 分步爬取
         run: |
           curl -s --max-time 10 "https://ipsc-rankings.vercel.app/api/cron/keepwarm" || true
-          # 每分鐘爬 1 個未完成 shooter（輕量，10 秒內完成）
+          # 每分鐘爬 1 個未完成 shooter（輕量，且唔 recalc，rec功能由本地 cron 負責）
           curl -s --max-time 15 -X POST "https://ipsc-rankings.vercel.app/api/scrape/step" || true
-          # 每 5 分鐘重算一次排名
-          if [ $(( $(date +%M) % 5 )) -eq 0 ]; then
-            curl -s --max-time 15 -X POST "https://ipsc-rankings.vercel.app/api/scrape/rank" || true
-          fi

@@ -401,7 +401,7 @@ def calculate_all_rankings(match_id):
             s = shooter_map[sid]
             cursor.execute(
                 "INSERT INTO rankings (match_id, division, rank_type, group_key, competitor_number, place, total_score, score_percent) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
-                (match_id, division, "overall", None, s["competitor_number"], place, ts, pct))
+                (match_id, division, "overall", "", s["competitor_number"], place, ts, pct))
 
         # === CATEGORY ===
         cat_shooters = {}
