@@ -72,6 +72,7 @@ else:
 
 _last_auto_scrape = {}
 _BATCH_SIZE = 5  # 每次爬取 shooter 數量
+_step_skipped = set()  # 分步爬取已試過但無 stage 數據嘅 comp（短暫 skip）
 
 
 def _should_auto_scrape(match_id, cooldown_sec=120):
@@ -511,15 +512,14 @@ def _auto_scrape_active_matches():
 
 @app.route("/api/scrape/step", methods=["POST"])
 def scrape_step():
-    """分步爬取 — 每次只爬最大未完成比賽嘅 1 個新 shooter，唔 recalc。
-    目標：整個 request 喺 Vercel 10 秒限制內完成，適合每分鐘 cron 分批推進。"""
+    """分步爬取 — 每次只爬 1 個未完成 shooter，唔 recalc。"""
     ensure_db()
+    global _step_skipped
     from core.scraper import parse_verify_page
     import requests as _req
     import time as _t
     _t0 = _t.time()
     scraped = 0
-    # 揀最大未完成 match
     db = get_db()
     cursor = get_cursor(db)
     cursor.execute("SELECT id FROM matches WHERE is_completed = 0 ORDER BY id DESC LIMIT 1")
@@ -528,32 +528,47 @@ def scrape_step():
     if mid is None:
         db.close()
         return jsonify({"status": "done", "match": None, "scraped": 0, "sec": round(_t.time()-_t0,2)})
-    # 揀一個未爬 (冇 stage_scores) 嘅 shooter
+    # 揀一個未爬 (冇 stage_scores) 且未試過嘅 shooter
+    target = None
     cursor.execute("""
         SELECT s.competitor_number FROM shooters s
         WHERE s.match_id = %s AND (
             SELECT COUNT(*) FROM stage_scores ss WHERE ss.shooter_id = s.id
         ) = 0
         ORDER BY s.competitor_number
-        LIMIT 1
+        LIMIT 200
     """, (mid,))
-    comp_row = cursor.fetchone()
+    pending = [r["competitor_number"] for r in cursor.fetchall()]
     db.close()
-    if comp_row and comp_row["competitor_number"]:
-        comp_num = comp_row["competitor_number"]
+    # 揀第一批未被短暫 skip 嘅
+    for comp in pending:
+        if comp not in _step_skipped:
+            target = comp
+            break
+    if target is None:
+        # 全部試過 → reset skip list 再搜多一次 true missing
+        _step_skipped = set()
+        if pending:
+            target = pending[0]
+    if target is not None:
         try:
-            url = f"{cfg.BASE_URL}/portal/verify/{mid}?shooter={comp_num}"
+            url = f"{cfg.BASE_URL}/portal/verify/{mid}?shooter={target}"
             resp = _req.get(url, timeout=6, headers={"User-Agent": "Mozilla/5.0 Chrome/125.0"})
             resp.encoding = resp.apparent_encoding
             result = parse_verify_page(resp.text)
             if result and result.get("name") and result["name"] != "Unknown":
-                result["competitor_number"] = comp_num
+                result["competitor_number"] = target
                 result["region"] = "HKG"
                 _save_shooter_data(mid, result)
-                scraped = 1
+                had = bool(result.get("stages"))
+                scraped = 1 if had else 0
+                if not had:
+                    _step_skipped.add(target)
+            else:
+                _step_skipped.add(target)
         except Exception:
-            pass
-    return jsonify({"status": "ok", "match": mid, "comp": comp_num if comp_row else None,
+            _step_skipped.add(target)
+    return jsonify({"status": "ok", "match": mid, "comp": target,
                     "scraped": scraped, "sec": round(_t.time()-_t0, 2)})
 
 
