@@ -228,6 +228,11 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_rankings_lookup
             ON rankings(match_id, division, rank_type, group_key)
         """)
+        # SQLite: 同樣加 unique index，令 ON CONFLICT DO UPDATE 可用 + 防重複
+        cur.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS uq_rankings_key
+            ON rankings(match_id, division, rank_type, group_key, competitor_number)
+        """)
 
     conn.commit()
     conn.close()

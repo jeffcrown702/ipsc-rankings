@@ -400,7 +400,9 @@ def calculate_all_rankings(match_id):
             pct = round((ts / top_score) * 100, 2) if top_score > 0 and ts > 0 else 0
             s = shooter_map[sid]
             cursor.execute(
-                "INSERT INTO rankings (match_id, division, rank_type, group_key, competitor_number, place, total_score, score_percent) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
+                "INSERT INTO rankings (match_id, division, rank_type, group_key, competitor_number, place, total_score, score_percent) VALUES (%s,%s,%s,%s,%s,%s,%s,%s) "
+                "ON CONFLICT (match_id, division, rank_type, group_key, competitor_number) "
+                "DO UPDATE SET place=EXCLUDED.place, total_score=EXCLUDED.total_score, score_percent=EXCLUDED.score_percent",
                 (match_id, division, "overall", "", s["competitor_number"], place, ts, pct))
 
         # === CATEGORY ===
