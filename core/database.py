@@ -147,6 +147,11 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_rankings_lookup
             ON rankings(match_id, division, rank_type, group_key)
         """)
+        # PostgreSQL: 防止排名重複
+        cur.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS uq_rankings_key
+            ON rankings(match_id, division, rank_type, group_key, competitor_number)
+        """)
     else:
         # SQLite 版 SQL
         cur.execute("""

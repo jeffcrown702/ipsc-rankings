@@ -343,10 +343,15 @@ def get_rankings(match_id):
             cursor.execute("""
                 SELECT r.place, r.competitor_number, r.total_score AS stage_score,
                        r.score_percent AS hit_factor,
+                       ss.pts, ss.time AS stage_time,
                        s.name, s.division, s.class, s.factor, s.category, s.region
                 FROM rankings r
                 JOIN shooters s ON r.match_id = s.match_id
                     AND r.competitor_number = s.competitor_number
+                LEFT JOIN stage_scores ss ON ss.shooter_id = s.id
+                    AND ss.match_id = r.match_id
+                    AND (ss.stage_name = r.group_key
+                         OR ss.stage_name = REPLACE(r.group_key, ' 0', ' '))
                 WHERE r.match_id = %s AND r.division = %s
                   AND r.rank_type = 'stage' AND r.group_key = %s
                 ORDER BY r.place
