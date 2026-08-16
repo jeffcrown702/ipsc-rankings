@@ -339,24 +339,41 @@ def get_rankings(match_id):
                             "groups": list(result.keys()), "rankings": result})
 
     elif rank_type == "stage":
+        # All Divisions fallback: stage 排名存喺各 division，用 Open 當 fallback
+        stage_div = "Open" if division == "All Divisions" else division
         if group_key:
             cursor.execute("""
                 SELECT r.place, r.competitor_number, r.total_score AS stage_score,
                        r.score_percent AS hit_factor,
-                       ss.pts, ss.time AS stage_time,
-                       s.name, s.division, s.class, s.factor, s.category, s.region
+                       (SELECT MAX(r2.total_score) FROM rankings r2
+                        WHERE r2.match_id = r.match_id AND r2.division = r.division
+                          AND r2.rank_type = 'stage' AND r2.group_key = r.group_key) AS stage_max,
+                       s.id AS shooter_id, s.name, s.division, s.class, s.factor, s.category, s.region
                 FROM rankings r
                 JOIN shooters s ON r.match_id = s.match_id
                     AND r.competitor_number = s.competitor_number
-                LEFT JOIN stage_scores ss ON ss.shooter_id = s.id
-                    AND ss.match_id = r.match_id
-                    AND (ss.stage_name = r.group_key
-                         OR ss.stage_name = REPLACE(r.group_key, ' 0', ' '))
                 WHERE r.match_id = %s AND r.division = %s
                   AND r.rank_type = 'stage' AND r.group_key = %s
                 ORDER BY r.place
-            """, (match_id, division, group_key))
+            """, (match_id, stage_div, group_key))
             rows = [dict(r) for r in cursor.fetchall()]
+            # 攞 stage_scores map: {shooter_id: {stage_num: {pts, time}}}
+            import re as _re
+            sn = _re.search(r"(\d+)", group_key or "")
+            stage_num = int(sn.group(1)) if sn else 0
+            cursor.execute("""
+                SELECT shooter_id, pts, time FROM stage_scores
+                WHERE match_id = %s AND stage_number = %s
+            """, (match_id, stage_num))
+            score_map = {r["shooter_id"]: r for r in cursor.fetchall()}
+            # 組裝
+            for r in rows:
+                ss = score_map.get(r.get("shooter_id")) or {}
+                r["points"] = ss.get("pts")
+                r["stage_time"] = ss.get("time")
+                mx = r.get("stage_max")
+                r["score_percent"] = round((r["stage_score"] * 100.0 / mx), 2) if mx and r["stage_score"] else 0
+                r.pop("stage_max", None); r.pop("shooter_id", None)
             db.close()
             return jsonify({"rank_type": "stage", "division": division,
                             "group_key": group_key, "rankings": rows})
@@ -366,7 +383,7 @@ def get_rankings(match_id):
                 FROM rankings r
                 WHERE r.match_id = %s AND r.division = %s AND r.rank_type = 'stage'
                 ORDER BY r.group_key
-            """, (match_id, division))
+            """, (match_id, stage_div))
             stages = [r["group_key"] for r in cursor.fetchall()]
             db.close()
             return jsonify({"rank_type": "stage", "division": division,
