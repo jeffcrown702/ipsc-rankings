@@ -262,6 +262,9 @@ def calculate_division_rankings(match_id, division):
                 (match_id, division, rank_type, group_key, competitor_number,
                  place, total_score, score_percent, calculated_at)
                 VALUES (%s, %s, 'stage', %s, %s, %s, %s, %s, NOW())
+                ON CONFLICT (match_id, division, rank_type, group_key, competitor_number)
+                DO UPDATE SET place=EXCLUDED.place, total_score=EXCLUDED.total_score,
+                    score_percent=EXCLUDED.score_percent, calculated_at=NOW()
             """, (match_id, division, stage_key, s["competitor_number"],
                   place, round(ss_score, 4), round(hf, 4)))
 
