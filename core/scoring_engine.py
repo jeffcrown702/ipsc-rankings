@@ -291,7 +291,14 @@ def calculate_all_rankings(match_id):
     db.close()
 
     for div in divisions:
-        calculate_division_rankings(match_id, div)
+        for attempt in range(2):
+            try:
+                calculate_division_rankings(match_id, div)
+                break
+            except Exception as e:
+                print(f"[RANK] {div}: 中斷 ({str(e)[:60]})，重試中")
+                try: db.commit()
+                except: pass
 
     # === *ALL* 跨 Division 排名 ===
     division = "*ALL*"
