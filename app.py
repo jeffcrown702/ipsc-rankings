@@ -904,21 +904,12 @@ def import_data_post():
 
 if not _IS_VERCEL:
     def _start_background_cron():
-        """定時任務：每 5 分鐘自動爬取進行中比賽"""
-        def cron_loop():
-            while True:
-                time.sleep(300)
-                try:
-                    _auto_scrape_active_matches()
-                except Exception as e:
-                    print(f"[CRON] 自動爬取出錯: {e}")
+        """定時任務：每 5 分鐘自動爬取進行中比賽
+        ★ 停用 import-time spawn — 免並行 thread 同獨立 cron job 相撞。
+        由外部 cron job (IPSC Neon Scraper recurring) 控制爬取+recalc."""
+        pass
 
-        t = threading.Thread(target=cron_loop, daemon=True)
-        t.start()
-        print("[CRON] 自動爬取已啟動（每 5 分鐘）")
-
-    # Start background cron on import
-    _start_background_cron()
+    # Start background cron on import — 已停用（避免同 cron job 並行撞）
 
 
 # ===================== Main =====================
