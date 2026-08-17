@@ -17,9 +17,7 @@ def calculate_division_rankings(match_id, division):
     db = get_db()
     cursor = get_cursor(db)
 
-    # 0. 清除該 Division 舊 rankings（避免重複插入）
-    cursor.execute("DELETE FROM rankings WHERE match_id = %s AND division = %s", (match_id, division))
-    db.commit()
+    # (已移除 DELETE — 用 ON CONFLICT upsert，斷線都保住已寫 data)
 
     # 1. 取得該 Division 所有射手
     cursor.execute("""
@@ -150,11 +148,7 @@ def calculate_division_rankings(match_id, division):
 
     db.commit()
 
-    # 6. 清除舊排名
-    cursor.execute("""
-        DELETE FROM rankings
-        WHERE match_id = %s AND division = %s
-    """, (match_id, division))
+    # (唔再 DELETE — 全部用 ON CONFLICT upsert，斷線都保住已寫 divisions)
 
     # 建立射手查找表
     shooter_map = {s["id"]: s for s in shooters}
@@ -304,8 +298,7 @@ def calculate_all_rankings(match_id):
     division = "*ALL*"
     db = get_db()
     cursor = get_cursor(db)
-    cursor.execute("DELETE FROM rankings WHERE match_id = %s AND division = %s", (match_id, division))
-    db.commit()
+    # (唔再 DELETE — 全 ON CONFLICT upsert，斷線都保住 *ALL*)
 
     # 1. 取得全部射手
     cursor.execute("""
@@ -395,8 +388,7 @@ def calculate_all_rankings(match_id):
             for s in shooters:
                 shooter_totals[s["id"]] = float(s["total_score"] or 0)
 
-        # 7. 清除舊 *ALL* 排名
-        cursor.execute("DELETE FROM rankings WHERE match_id = %s AND division = %s", (match_id, division))
+        # (已移除 DELETE — 用 ON CONFLICT upsert)
 
         # === OVERALL ===
         def all_sort_key(sid):
