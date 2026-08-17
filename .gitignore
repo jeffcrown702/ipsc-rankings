@@ -32,3 +32,5 @@ Thumbs.db
 
 .vercel
 .scrape.lock
+_cron_scrape.py
+cron_sync_run.py
